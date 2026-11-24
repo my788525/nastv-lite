@@ -15,6 +15,8 @@ public class MediaDbItem {
     public List<String> posters;
     public String category;          // "Mix", "TV", "Folder" 等
     public String mode;              // "movie_tv" 或 "folder" (NASTV Lite 服务端双模字段)
+    @SerializedName("allow_download")
+    public boolean allowDownload;
     @SerializedName("view_type")
     public int viewType;
     @SerializedName("poster_type")

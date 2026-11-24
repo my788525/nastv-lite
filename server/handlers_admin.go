@@ -210,11 +210,12 @@ func (app *App) handleAdminLibraries(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var req struct {
-			ID       string   `json:"id"`
-			Name     string   `json:"name"`
-			Mode     string   `json:"mode"` // "movie_tv" or "folder"
-			Paths    []string `json:"paths"`
-			Category string   `json:"category"`
+			ID            string   `json:"id"`
+			Name          string   `json:"name"`
+			Mode          string   `json:"mode"` // "movie_tv" or "folder"
+			Paths         []string `json:"paths"`
+			Category      string   `json:"category"`
+			AllowDownload bool     `json:"allow_download"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			errResp(w, 400, "请求格式错误")
@@ -243,17 +244,19 @@ func (app *App) handleAdminLibraries(w http.ResponseWriter, r *http.Request) {
 				existing.Mode = req.Mode
 				existing.Paths = req.Paths
 				existing.Category = req.Category
+				existing.AllowDownload = req.AllowDownload
 				lib = existing
 			}
 		}
 		if lib == nil {
 			lib = &Library{
-				ID:        "lib_" + randomHex(6),
-				Name:      req.Name,
-				Mode:      req.Mode,
-				Paths:     req.Paths,
-				Category:  req.Category,
-				CreatedAt: time.Now().Unix(),
+				ID:            "lib_" + randomHex(6),
+				Name:          req.Name,
+				Mode:          req.Mode,
+				Paths:         req.Paths,
+				Category:      req.Category,
+				AllowDownload: req.AllowDownload,
+				CreatedAt:     time.Now().Unix(),
 			}
 			app.store.data.Libraries[lib.ID] = lib
 		}

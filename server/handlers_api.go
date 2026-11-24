@@ -131,11 +131,13 @@ func (app *App) handleMediaDbList(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		res = append(res, MediaDbDTO{
-			Guid:     lib.ID,
-			Title:    lib.Name,
-			Category: cat,
-			Mode:     lib.Mode,
-			Count:    lib.ItemCount,
+			Guid:          lib.ID,
+			Title:         lib.Name,
+			Category:      cat,
+			Mode:          lib.Mode,
+			AllowDownload: lib.AllowDownload,
+			Poster:        "",
+			Count:         lib.ItemCount,
 		})
 	}
 	if res == nil {
@@ -148,6 +150,10 @@ func (app *App) toItemDTO(userID string, it *MediaItem, libMode string) PlayList
 	poster := ""
 	if it.PosterPath != "" || (it.Type != "Directory" && it.Type != "TV" && it.Type != "Audio") {
 		poster = "/v/api/v1/img/" + it.Guid
+	}
+	allowDl := false
+	if lib, ok := app.store.GetLibrary(it.LibID); ok {
+		allowDl = lib.AllowDownload
 	}
 	return PlayListItemDTO{
 		Guid:          it.Guid,
@@ -167,6 +173,7 @@ func (app *App) toItemDTO(userID string, it *MediaItem, libMode string) PlayList
 		FileSize:      it.FileSize,
 		UpdateTime:    it.ModTime,
 		LibraryMode:   libMode,
+		AllowDownload: allowDl,
 	}
 }
 

@@ -311,6 +311,9 @@
       </select>
     </div>
     <div class="form-group">
+      <label class="inline-check"><input type="checkbox" id="libAllowDownload"> 📂 文件共享（允许客户端下载该库内的文件，普通媒体库默认禁止下载）</label>
+    </div>
+    <div class="form-group">
       <label>NAS 目录路径（可点击下方浏览或手动输入，多个路径用逗号分隔）</label>
       <input id="libPaths" placeholder="/vol1/1000/MV">
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -527,7 +530,7 @@ async function loadLibs() {
   document.getElementById('libTable').innerHTML = cachedLibs.map(l => `
     <tr>
       <td><b>${l.name}</b></td>
-      <td>${l.mode === 'folder' ? '<span class="badge green">📁 纯文件夹</span>' : '<span class="badge">🎬 影视剧</span>'}</td>
+      <td>${l.mode === 'folder' ? '<span class="badge green">📁 纯文件夹</span>' : '<span class="badge">🎬 影视剧</span>'}${l.allow_download ? ' <span class="badge orange">📂 文件共享</span>' : ''}</td>
       <td style="font-size:12px;color:var(--muted)">${(l.paths || []).join(', ')}</td>
       <td>${l.item_count || 0}</td>
       <td class="row-actions">
@@ -610,6 +613,7 @@ function openLibModal() {
   document.getElementById('libId').value = '';
   document.getElementById('libName').value = '';
   document.getElementById('libMode').value = 'folder';
+  document.getElementById('libAllowDownload').checked = false;
   document.getElementById('libPaths').value = '';
   browseFS('');
   openModal('libModal');
@@ -622,6 +626,7 @@ function editLib(id) {
   document.getElementById('libId').value = l.id;
   document.getElementById('libName').value = l.name;
   document.getElementById('libMode').value = l.mode;
+  document.getElementById('libAllowDownload').checked = !!l.allow_download;
   document.getElementById('libPaths').value = (l.paths || []).join(', ');
   browseFS((l.paths && l.paths[0]) || '/vol1');
   openModal('libModal');
@@ -659,8 +664,9 @@ async function saveLib() {
   const id = document.getElementById('libId').value;
   const name = document.getElementById('libName').value.trim();
   const mode = document.getElementById('libMode').value;
+  const allow_download = document.getElementById('libAllowDownload').checked;
   const paths = document.getElementById('libPaths').value.split(',').map(s => s.trim()).filter(Boolean);
-  const r = await api('/api/admin/libraries', { method: 'POST', body: { id, name, mode, paths } });
+  const r = await api('/api/admin/libraries', { method: 'POST', body: { id, name, mode, allow_download, paths } });
   if (r.code !== 0) { alert(r.msg); return; }
   closeModal('libModal');
   setTimeout(initDashboard, 800);

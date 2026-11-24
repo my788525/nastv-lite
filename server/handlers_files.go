@@ -42,11 +42,11 @@ func (app *App) canAccessFSPath(u *User, target string) bool {
 	if u == nil {
 		return false
 	}
-	if u.Role == "admin" {
-		return true
-	}
 	libs := app.store.GetUserLibraries(u)
 	for _, lib := range libs {
+		if !lib.AllowDownload {
+			continue
+		}
 		for _, p := range lib.Paths {
 			if isSubPath(p, target) {
 				return true
@@ -63,21 +63,17 @@ func (app *App) handleFilesList(w http.ResponseWriter, r *http.Request) {
 	}
 	reqPath := strings.TrimSpace(r.URL.Query().Get("path"))
 
-	// If empty path, return user's authorized library root folders (+ "/" for admin)
+	// Only expose libraries with AllowDownload (文件共享属性) enabled
 	if reqPath == "" {
 		var entries []FileEntryDTO
-		if u.Role == "admin" {
-			entries = append(entries, FileEntryDTO{
-				Name:  "🖥️ NAS 全部目录 (根目录)",
-				Path:  "/",
-				IsDir: true,
-			})
-		}
 		libs := app.store.GetUserLibraries(u)
 		for _, lib := range libs {
+			if !lib.AllowDownload {
+				continue
+			}
 			for _, p := range lib.Paths {
 				entries = append(entries, FileEntryDTO{
-					Name:  "📚 " + lib.Name + " (" + filepath.Base(p) + ")",
+					Name:  "📂 " + lib.Name + " (" + filepath.Base(p) + ")",
 					Path:  p,
 					IsDir: true,
 				})

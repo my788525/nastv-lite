@@ -250,7 +250,7 @@ async function renderHome() {
       <div class="poster">${effM === 'folder' ? '📁' : '🎬'}</div>
       <div class="card-body">
         <div class="card-title">${esc(l.title)}</div>
-        <div class="card-sub">${effM === 'folder' ? '纯文件夹模式' : '影视剧模式'} · ${l.count} 项</div>
+        <div class="card-sub">${effM === 'folder' ? '纯文件夹模式' : '影视剧模式'}${l.allow_download ? ' · 📂 文件共享' : ''} · ${l.count} 项</div>
       </div>
     </div>
   `;
@@ -268,7 +268,7 @@ function renderLibs() {
       <div class="poster">${effM === 'folder' ? '📁' : '🎬'}</div>
       <div class="card-body">
         <div class="card-title">${esc(l.title)}</div>
-        <div class="card-sub">${effM === 'folder' ? '纯文件夹模式 (支持下载)' : '影视剧模式'} · ${l.count} 项</div>
+        <div class="card-sub">${effM === 'folder' ? '纯文件夹模式' : '影视剧模式'}${l.allow_download ? ' · 📂 文件共享(可下载)' : ''} · ${l.count} 项</div>
       </div>
     </div>
   `;
@@ -278,7 +278,7 @@ function renderLibs() {
 async function openLibrary(libGuid) {
   const lib = libs.find(x => x.guid === libGuid);
   const effMode = getRememberedLibMode(lib || { guid: libGuid, mode: 'movie_tv' });
-  navStack = [{ guid: libGuid, libGuid: libGuid, title: lib ? lib.title : '媒体库', mode: effMode }];
+  navStack = [{ guid: libGuid, libGuid: libGuid, title: lib ? lib.title : '媒体库', mode: effMode, allowDownload: !!(lib && lib.allow_download) }];
   await loadNavTop();
 }
 
@@ -287,13 +287,14 @@ async function toggleLibViewMode() {
   const root = navStack[0];
   const nextMode = root.mode === 'folder' ? 'movie_tv' : 'folder';
   saveRememberedLibMode(root.libGuid, nextMode);
-  navStack = [{ guid: root.libGuid, libGuid: root.libGuid, title: root.title, mode: nextMode }];
+  navStack = [{ guid: root.libGuid, libGuid: root.libGuid, title: root.title, mode: nextMode, allowDownload: !!root.allowDownload }];
   await loadNavTop();
 }
 
 async function enterFolder(guid, title, mode) {
   const libGuid = navStack.length ? navStack[0].libGuid : guid;
-  navStack.push({ guid, libGuid, title, mode });
+  const allowDownload = navStack.length ? !!navStack[0].allowDownload : false;
+  navStack.push({ guid, libGuid, title, mode, allowDownload });
   await loadNavTop();
 }
 
@@ -345,8 +346,8 @@ async function loadNavTop() {
           </div>
           <div style="display:flex;gap:8px;align-items:center">
             <span class="list-meta">${isDir ? '目录' : fmtSize(it.file_size)}</span>
-            ${!isDir ? `<button onclick="playFromCurList(${idx})">▶ 播放</button>
-              <a href="${dlUrl}" download="${escAttr(it.title)}"><button class="sec">⬇ 下载</button></a>` : ''}
+            ${!isDir ? `<button onclick="playFromCurList(${idx})">▶ 播放</button>${top.allowDownload ? `
+              <a href="${dlUrl}" download="${escAttr(it.title)}"><button class="sec">⬇ 下载</button></a>` : ''}` : ''}
           </div>
         </div>
       `;
@@ -416,9 +417,15 @@ async function startPlayItem(it) {
   document.getElementById('nowPlayingTitle').innerText = it.title;
   document.getElementById('nowPlayingSub').innerText = it.tv_title || '';
   const dl = document.getElementById('btnPlayerDownload');
-  dl.href = `/v/api/v1/media/range/${it.guid}?token=${encodeURIComponent(token)}`;
-  dl.download = it.title;
-  dl.classList.remove('hidden');
+  const canDl = !!(it.allow_download || (navStack.length && navStack[0].allowDownload));
+  if (canDl) {
+    dl.href = `/v/api/v1/media/range/${it.guid}?token=${encodeURIComponent(token)}`;
+    dl.download = it.title;
+    dl.classList.remove('hidden');
+  } else {
+    dl.removeAttribute('href');
+    dl.classList.add('hidden');
+  }
 
   // Probe & fetch saved ts
   try {
@@ -546,7 +553,7 @@ async function loadRemoteFiles(path) {
         </div>
       </div>
     `;
-  }).join('') || '<p style="color:var(--muted)">空目录</p>';
+  }).join('') || (cur ? '<p style="color:var(--muted)">空目录</p>' : '<p style="color:var(--muted)">暂无可下载的文件共享库。如需在客户端下载文件，请在管理台编辑媒体库并勾选「文件共享」。</p>');
   area.innerHTML = html;
 }
 

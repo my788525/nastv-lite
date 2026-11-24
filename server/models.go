@@ -31,14 +31,15 @@ type ServerSettings struct {
 }
 
 type Library struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Mode      string   `json:"mode"` // "movie_tv" or "folder"
-	Paths     []string `json:"paths"`
-	Category  string   `json:"category"` // e.g. "Movie", "TV", "Folder", "Music"
-	CreatedAt int64    `json:"created_at"`
-	LastScan  int64    `json:"last_scan"`
-	ItemCount int      `json:"item_count"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Mode          string   `json:"mode"` // "movie_tv" or "folder"
+	Paths         []string `json:"paths"`
+	Category      string   `json:"category"`       // e.g. "Movie", "TV", "Folder", "Music"
+	AllowDownload bool     `json:"allow_download"` // 文件共享属性：允许客户端下载该库内文件
+	CreatedAt     int64    `json:"created_at"`
+	LastScan      int64    `json:"last_scan"`
+	ItemCount     int      `json:"item_count"`
 }
 
 type SubtitleInfo struct {
@@ -124,12 +125,13 @@ type ApiResponse struct {
 }
 
 type MediaDbDTO struct {
-	Guid     string `json:"guid"`
-	Title    string `json:"title"`
-	Category string `json:"category"`
-	Mode     string `json:"mode"` // "movie_tv" or "folder"
-	Poster   string `json:"poster,omitempty"`
-	Count    int    `json:"count"`
+	Guid          string `json:"guid"`
+	Title         string `json:"title"`
+	Category      string `json:"category"`
+	Mode          string `json:"mode"` // "movie_tv" or "folder"
+	AllowDownload bool   `json:"allow_download"`
+	Poster        string `json:"poster,omitempty"`
+	Count         int    `json:"count"`
 }
 
 type PlayListItemDTO struct {
@@ -150,6 +152,7 @@ type PlayListItemDTO struct {
 	FileSize      int64   `json:"file_size,omitempty"`
 	UpdateTime    int64   `json:"update_time,omitempty"`
 	LibraryMode   string  `json:"library_mode,omitempty"`
+	AllowDownload bool    `json:"allow_download,omitempty"`
 }
 
 type ItemListResponseDTO struct {
