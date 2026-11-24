@@ -1,11 +1,11 @@
 {
   "server": {
-    "versionCode": 4,
-    "versionName": "1.0.3",
-    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.3/nastv-server-linux-amd64",
-    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.3/nastv-server-windows-amd64.exe",
-    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.3/nastv-lite-x86_64-v1.0.3.fpk",
-    "changelog": "NASTV Lite 服务端 v1.0.3：\n1. 新增内置「Web 网页端播放器 (/play)」，支持多用户鉴权登录与媒体库权限隔离，普通用户登录后自动进入播放端。\n2. 网页端完整支持影视剧海报墙、纯文件夹逐级浏览与文件直接下载、多清晰度 HLS 转码切换、云端续播进度同步与远程文件浏览下载。"
+    "versionCode": 5,
+    "versionName": "1.0.4",
+    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.4/nastv-server-linux-amd64",
+    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.4/nastv-server-windows-amd64.exe",
+    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.4/nastv-lite-x86_64-v1.0.4.fpk",
+    "changelog": "NASTV Lite 服务端 v1.0.4：\n1. 优化影视剧扫描识别：当视频文件名为 1080P/4K/BluRay/国语 等通用画质标签时，自动向上提取所属电影文件夹名称及 movie.nfo 标题，不再显示一堆“1080P”。\n2. 优化剧集数字命名识别：支持将子目录下的 01/02/03 等纯数字视频自动聚合成剧集。"
   },
   "android": {
     "versionCode": 2,

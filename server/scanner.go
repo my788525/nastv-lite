@@ -32,8 +32,33 @@ var posterNames = []string{"poster.jpg", "poster.png", "folder.jpg", "folder.png
 var (
 	reSeasonEp = regexp.MustCompile(`(?i)[Ss](\d{1,2})[Ee](\d{1,4})`)
 	reEpOnly   = regexp.MustCompile(`(?i)(?:^|[\s._\-\[])(?:EP?|第)\s*(\d{1,4})\s*(?:集|话|話)?(?:$|[\s._\-\]])`)
+	rePureNum  = regexp.MustCompile(`^\s*(\d{1,3})\s*$`)
 	reYear     = regexp.MustCompile(`\((\d{4})\)|\.(\d{4})\.`)
+	reTechTags = regexp.MustCompile(`(?i)\b(2160p|1080p|1080i|720p|480p|4k|8k|hdr|hdr10|dv|dolby|vision|atmos|truehd|dts|dtshd|ac3|aac|flac|6ch|8ch|2ch|x264|x265|h264|h265|hevc|avc|10bit|8bit|bluray|blu-ray|bdrip|bd|remux|web-dl|webdl|webrip|web|amazon|amzn|netflix|nf|hdtv|hdrip|dvdrip|mp4|mkv|avi|ts|chs|cht|eng|sub|mp3)\b`)
+	reCnTags   = regexp.MustCompile(`(国语|粤语|双语|三语|中字|中英|特效|简繁|简体|繁体|字幕|未删减|加长版|高码率|蓝光|原盘|1080|2160|720)`)
 )
+
+func isGenericMediaFilename(base string) bool {
+	s := reYear.ReplaceAllString(base, " ")
+	s = reTechTags.ReplaceAllString(s, " ")
+	s = reCnTags.ReplaceAllString(s, " ")
+	s = regexp.MustCompile(`[\s._\-\[\]()（）【】0-9]+`).ReplaceAllString(s, "")
+	return len([]rune(s)) <= 1
+}
+
+func resolveMovieFolderTitle(dir, rootPath string) string {
+	cur := dir
+	for cur != rootPath && cur != "/" && cur != "." {
+		b := filepath.Base(cur)
+		up := strings.ToUpper(b)
+		if up == "BDMV" || up == "STREAM" || up == "VIDEO_TS" || isGenericMediaFilename(b) {
+			cur = filepath.Dir(cur)
+			continue
+		}
+		return b
+	}
+	return filepath.Base(dir)
+}
 
 func deterministicGuid(prefix, key string) string {
 	sum := sha1.Sum([]byte(key))
@@ -252,7 +277,7 @@ func scanFolderMode(lib *Library, rootPath, currentDir, parentGuid string, out m
 	}
 }
 
-func parseSeasonEpisode(filename string) (int, int, bool) {
+func parseSeasonEpisode(filename string, inSubDir bool) (int, int, bool) {
 	if m := reSeasonEp.FindStringSubmatch(filename); len(m) == 3 {
 		s, _ := strconv.Atoi(m[1])
 		e, _ := strconv.Atoi(m[2])
@@ -261,6 +286,14 @@ func parseSeasonEpisode(filename string) (int, int, bool) {
 	if m := reEpOnly.FindStringSubmatch(filename); len(m) == 2 {
 		e, _ := strconv.Atoi(m[1])
 		return 1, e, true
+	}
+	if inSubDir {
+		if m := rePureNum.FindStringSubmatch(filename); len(m) == 2 {
+			e, _ := strconv.Atoi(m[1])
+			if e > 0 && e < 1000 {
+				return 1, e, true
+			}
+		}
 	}
 	return 0, 0, false
 }
@@ -296,7 +329,7 @@ func scanMovieTVMode(lib *Library, rootPath string, out map[string]*MediaItem) {
 		baseNoExt := strings.TrimSuffix(name, filepath.Ext(name))
 		rel, _ := filepath.Rel(rootPath, path)
 
-		season, ep, isEp := parseSeasonEpisode(baseNoExt)
+		season, ep, isEp := parseSeasonEpisode(baseNoExt, dir != rootPath)
 		// Also check if parent folder is named "Season X" or "S01"
 		parentDirName := filepath.Base(dir)
 		showDir := dir
@@ -382,6 +415,12 @@ func scanMovieTVMode(lib *Library, rootPath string, out map[string]*MediaItem) {
 			// Standalone Movie
 			movGuid := deterministicGuid("mv_", lib.ID+":"+path)
 			title := baseNoExt
+			if dir != rootPath && isGenericMediaFilename(baseNoExt) {
+				folderTitle := resolveMovieFolderTitle(dir, rootPath)
+				if folderTitle != "" && folderTitle != filepath.Base(rootPath) {
+					title = folderTitle
+				}
+			}
 			overview := ""
 			year := 0
 			var score float64
@@ -391,8 +430,18 @@ func scanMovieTVMode(lib *Library, rootPath string, out map[string]*MediaItem) {
 					ys = m[2]
 				}
 				year, _ = strconv.Atoi(ys)
+			} else if m := reYear.FindStringSubmatch(title); len(m) >= 3 {
+				ys := m[1]
+				if ys == "" {
+					ys = m[2]
+				}
+				year, _ = strconv.Atoi(ys)
 			}
-			if nfo := readNFO(filepath.Join(dir, baseNoExt+".nfo")); nfo != nil {
+			nfo := readNFO(filepath.Join(dir, baseNoExt+".nfo"))
+			if nfo == nil {
+				nfo = readNFO(filepath.Join(dir, "movie.nfo"))
+			}
+			if nfo != nil {
 				if nfo.Title != "" {
 					title = nfo.Title
 				}
