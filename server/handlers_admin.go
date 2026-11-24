@@ -1,0 +1,381 @@
+package main
+
+import (
+	"encoding/json"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+func (app *App) requireAdmin(w http.ResponseWriter, r *http.Request) *User {
+	u := app.requireUser(w, r)
+	if u == nil {
+		return nil
+	}
+	if u.Role != "admin" {
+		errResp(w, 403, "需要管理员权限")
+		return nil
+	}
+	return u
+}
+
+func getLocalIPs() (v4 []string, v6 []string) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			if ip.To4() != nil {
+				v4 = append(v4, ip.String())
+			} else {
+				v6 = append(v6, ip.String())
+			}
+		}
+	}
+	return
+}
+
+func (app *App) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	v4, v6 := getLocalIPs()
+	app.store.mu.RLock()
+	libCount := len(app.store.data.Libraries)
+	userCount := len(app.store.data.Users)
+	itemCount := len(app.store.data.Items)
+	app.store.mu.RUnlock()
+
+	okResp(w, map[string]interface{}{
+		"version_code": ServerVersionCode,
+		"version_name": ServerVersionName,
+		"port":         app.port,
+		"ipv4":         v4,
+		"ipv6":         v6,
+		"has_ffmpeg":   app.transcoder.ffmpegPath != "",
+		"has_vaapi":    app.transcoder.hasVAAPI,
+		"lib_count":    libCount,
+		"user_count":   userCount,
+		"item_count":   itemCount,
+	})
+}
+
+func (app *App) handleAdminFS(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	dir := r.URL.Query().Get("path")
+	if dir == "" {
+		dir = "/"
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		errResp(w, 400, "无法读取目录: "+err.Error())
+		return
+	}
+	var dirs []map[string]string
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		dirs = append(dirs, map[string]string{
+			"name": e.Name(),
+			"path": filepath.Join(dir, e.Name()),
+		})
+	}
+	sort.Slice(dirs, func(i, j int) bool {
+		return dirs[i]["name"] < dirs[j]["name"]
+	})
+	okResp(w, map[string]interface{}{
+		"current": dir,
+		"parent":  filepath.Dir(dir),
+		"dirs":    dirs,
+	})
+}
+
+func (app *App) handleAdminLibraries(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		app.store.mu.RLock()
+		var libs []*Library
+		for _, lib := range app.store.data.Libraries {
+			cp := *lib
+			libs = append(libs, &cp)
+		}
+		app.store.mu.RUnlock()
+		sort.Slice(libs, func(i, j int) bool {
+			return libs[i].CreatedAt < libs[j].CreatedAt
+		})
+		if libs == nil {
+			libs = []*Library{}
+		}
+		okResp(w, libs)
+
+	case http.MethodPost:
+		var req struct {
+			ID       string   `json:"id"`
+			Name     string   `json:"name"`
+			Mode     string   `json:"mode"` // "movie_tv" or "folder"
+			Paths    []string `json:"paths"`
+			Category string   `json:"category"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			errResp(w, 400, "请求格式错误")
+			return
+		}
+		if strings.TrimSpace(req.Name) == "" || len(req.Paths) == 0 {
+			errResp(w, 400, "媒体库名称和路径不能为空")
+			return
+		}
+		if req.Mode != ModeFolder {
+			req.Mode = ModeMovieTV
+		}
+		if req.Category == "" {
+			if req.Mode == ModeFolder {
+				req.Category = "Folder"
+			} else {
+				req.Category = "Movie"
+			}
+		}
+
+		app.store.mu.Lock()
+		var lib *Library
+		if req.ID != "" {
+			if existing, ok := app.store.data.Libraries[req.ID]; ok {
+				existing.Name = req.Name
+				existing.Mode = req.Mode
+				existing.Paths = req.Paths
+				existing.Category = req.Category
+				lib = existing
+			}
+		}
+		if lib == nil {
+			lib = &Library{
+				ID:        "lib_" + randomHex(6),
+				Name:      req.Name,
+				Mode:      req.Mode,
+				Paths:     req.Paths,
+				Category:  req.Category,
+				CreatedAt: time.Now().Unix(),
+			}
+			app.store.data.Libraries[lib.ID] = lib
+		}
+		_ = app.store.saveLocked()
+		libCopy := *lib
+		app.store.mu.Unlock()
+
+		// Async scan right away
+		go func(id string) {
+			_, _ = ScanLibrary(app.store, id)
+		}(libCopy.ID)
+
+		okResp(w, libCopy)
+
+	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			errResp(w, 400, "缺少 id")
+			return
+		}
+		app.store.mu.Lock()
+		delete(app.store.data.Libraries, id)
+		for guid, it := range app.store.data.Items {
+			if it.LibID == id {
+				delete(app.store.data.Items, guid)
+			}
+		}
+		_ = app.store.saveLocked()
+		app.store.mu.Unlock()
+		okResp(w, map[string]bool{"deleted": true})
+
+	default:
+		errResp(w, 405, "method not allowed")
+	}
+}
+
+func (app *App) handleAdminScan(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id != "" {
+		cnt, err := ScanLibrary(app.store, id)
+		if err != nil {
+			errResp(w, 400, err.Error())
+			return
+		}
+		okResp(w, map[string]int{"scanned": cnt})
+		return
+	}
+	app.store.mu.RLock()
+	var ids []string
+	for k := range app.store.data.Libraries {
+		ids = append(ids, k)
+	}
+	app.store.mu.RUnlock()
+	total := 0
+	for _, lid := range ids {
+		if cnt, err := ScanLibrary(app.store, lid); err == nil {
+			total += cnt
+		}
+	}
+	okResp(w, map[string]int{"scanned": total})
+}
+
+func (app *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
+	admin := app.requireAdmin(w, r)
+	if admin == nil {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		app.store.mu.RLock()
+		var users []map[string]interface{}
+		for _, u := range app.store.data.Users {
+			users = append(users, map[string]interface{}{
+				"id":           u.ID,
+				"username":     u.Username,
+				"role":         u.Role,
+				"allowed_libs": u.AllowedLibs,
+				"created_at":   u.CreatedAt,
+			})
+		}
+		app.store.mu.RUnlock()
+		okResp(w, users)
+
+	case http.MethodPost:
+		var req struct {
+			ID          string   `json:"id"`
+			Username    string   `json:"username"`
+			Password    string   `json:"password"`
+			Role        string   `json:"role"`
+			AllowedLibs []string `json:"allowed_libs"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			errResp(w, 400, "请求格式错误")
+			return
+		}
+		if req.Role != "admin" {
+			req.Role = "user"
+		}
+		if req.AllowedLibs == nil {
+			req.AllowedLibs = []string{}
+		}
+
+		app.store.mu.Lock()
+		if req.ID != "" {
+			u, ok := app.store.data.Users[req.ID]
+			if !ok {
+				app.store.mu.Unlock()
+				errResp(w, 404, "用户不存在")
+				return
+			}
+			if req.Username != "" {
+				u.Username = req.Username
+			}
+			if req.Password != "" {
+				u.Salt = randomHex(8)
+				u.Password = hashPassword(u.Salt, req.Password)
+			}
+			u.Role = req.Role
+			u.AllowedLibs = req.AllowedLibs
+		} else {
+			if strings.TrimSpace(req.Username) == "" || strings.TrimSpace(req.Password) == "" {
+				app.store.mu.Unlock()
+				errResp(w, 400, "用户名和密码不能为空")
+				return
+			}
+			for _, ex := range app.store.data.Users {
+				if strings.EqualFold(ex.Username, req.Username) {
+					app.store.mu.Unlock()
+					errResp(w, 400, "用户名已存在")
+					return
+				}
+			}
+			nu := app.store.newUserObj(req.Username, req.Password, req.Role, req.AllowedLibs)
+			app.store.data.Users[nu.ID] = nu
+		}
+		_ = app.store.saveLocked()
+		app.store.mu.Unlock()
+		okResp(w, map[string]bool{"saved": true})
+
+	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		if id == "" || id == admin.ID {
+			errResp(w, 400, "不能删除当前管理员自身")
+			return
+		}
+		app.store.mu.Lock()
+		delete(app.store.data.Users, id)
+		_ = app.store.saveLocked()
+		app.store.mu.Unlock()
+		okResp(w, map[string]bool{"deleted": true})
+
+	default:
+		errResp(w, 405, "method not allowed")
+	}
+}
+
+func (app *App) handleAdminUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	res, err := CheckServerUpdate()
+	if err != nil {
+		errResp(w, 500, "检查更新失败: "+err.Error())
+		return
+	}
+	okResp(w, res)
+}
+
+func (app *App) handleAdminUpdateApply(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	var req struct {
+		BinaryURL string `json:"binary_url"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req.BinaryURL == "" {
+		res, err := CheckServerUpdate()
+		if err != nil {
+			errResp(w, 500, err.Error())
+			return
+		}
+		if !res.HasUpdate {
+			errResp(w, 400, "当前已是最新版本")
+			return
+		}
+		req.BinaryURL = res.Latest.BinaryURL
+	}
+	if err := PerformServerSelfUpdate(req.BinaryURL); err != nil {
+		errResp(w, 500, "更新失败: "+err.Error())
+		return
+	}
+	okResp(w, map[string]string{"status": "updating_and_restarting"})
+}

@@ -1,0 +1,16 @@
+{
+  "server": {
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.0/nastv-server-linux-amd64",
+    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.0/nastv-lite-x86_64-v1.0.0.fpk",
+    "changelog": "NASTV Lite v1.0.0 首发：\n1. 原生飞牛 FPK 打包（无需 Docker），支持 x86_64。\n2. 媒体库双模式：支持「影视剧模式」与「纯文件夹模式」并存。\n3. 多用户与媒体库分权隔离。\n4. FFmpeg 硬件转码（VAAPI）与多清晰度 HLS。\n5. IPv4 / IPv6 双栈监听与 Web 管理台一键在线更新。"
+  },
+  "android": {
+    "versionCode": 1,
+    "versionName": "1.0.0",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.0/NASTV_Lite_v1.0.0.apk",
+    "changelog": "NASTV Lite v1.0.0 首发：\n1. 全新 NASTV Lite 品牌与双模媒体库适配（影视剧与纯文件夹模式自动识别）。\n2. 完整支持 IPv4、IPv6 字面量及双栈域名连接。\n3. 新增弱网容错选项：默认起播清晰度、可调缓冲区大小（15s/50s/120s）、断线重连与原画自动降级 720P。\n4. 保留全部车机/TV增强功能：播放模式切换、息屏听歌、开机自动续播、拼音首字母搜索、人声对白增强等。",
+    "forceUpdate": false
+  }
+}

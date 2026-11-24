@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 海报占位渐变（无图时显示），替代纯灰块，提升质感 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="135"
+        android:startColor="#FF2A2A2A"
+        android:centerColor="#FF333842"
+        android:endColor="#FF1F1F1F" />
+    <corners android:radius="10dp" />
+</shape>

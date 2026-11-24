@@ -1,0 +1,11 @@
+release/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.jks
+android/*.keystore
+server/data/
+fpk/app/server/nastv-server
+*.log
+.DS_Store

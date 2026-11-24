@@ -1,0 +1,118 @@
+package main
+
+import (
+	_ "embed"
+	"flag"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+//go:embed web/index.html
+var adminIndexHTML []byte
+
+type App struct {
+	port       string
+	dataDir    string
+	store      *Store
+	transcoder *Transcoder
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func main() {
+	port := flag.String("port", "5678", "HTTP listen port (dual-stack IPv4/IPv6)")
+	defaultData := filepath.Join(".", "data")
+	if v := os.Getenv("TRIM_PKGVAR"); v != "" {
+		defaultData = v
+	}
+	dataDir := flag.String("data", defaultData, "Persistent data directory")
+	flag.Parse()
+
+	store, err := NewStore(*dataDir)
+	if err != nil {
+		log.Fatalf("Failed to init store: %v", err)
+	}
+	transcoder := NewTranscoder(*dataDir)
+
+	app := &App{
+		port:       *port,
+		dataDir:    *dataDir,
+		store:      store,
+		transcoder: transcoder,
+	}
+
+	mux := http.NewServeMux()
+
+	// Web Admin UI
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" && !strings.HasPrefix(r.URL.Path, "/index.html") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(adminIndexHTML)
+	})
+
+	// Client Media API (/v/api/v1/...)
+	mux.HandleFunc("/v/api/v1/login", app.handleLogin)
+	mux.HandleFunc("/v/api/v1/sys/version", app.handleSysVersion)
+	mux.HandleFunc("/v/api/v1/user/info", app.handleUserInfo)
+	mux.HandleFunc("/v/api/v1/mediadb/list", app.handleMediaDbList)
+	mux.HandleFunc("/v/api/v1/item/list", app.handleItemList)
+	mux.HandleFunc("/v/api/v1/episode/list/", app.handleEpisodeList)
+	mux.HandleFunc("/v/api/v1/play/info", app.handlePlayInfo)
+	mux.HandleFunc("/v/api/v1/play/quality", app.handlePlayQuality)
+	mux.HandleFunc("/v/api/v1/play/play", app.handlePlayLink)
+	mux.HandleFunc("/v/api/v1/stream", app.handlePlayLink)
+	mux.HandleFunc("/v/api/v1/media/range/", app.handleMediaRange)
+	mux.HandleFunc("/v/api/v1/hls/", app.handleHLS)
+	mux.HandleFunc("/v/api/v1/img/", app.handleImg)
+	mux.HandleFunc("/v/api/v1/subtitle/dl/", app.handleSubtitleDl)
+	mux.HandleFunc("/v/api/v1/play/record", app.handlePlayRecord)
+	mux.HandleFunc("/v/api/v1/play/list", app.handlePlayList)
+	mux.HandleFunc("/v/api/v1/search/list", app.handleSearch)
+
+	// Admin API (/api/admin/...)
+	mux.HandleFunc("/api/admin/status", app.handleAdminStatus)
+	mux.HandleFunc("/api/admin/fs", app.handleAdminFS)
+	mux.HandleFunc("/api/admin/libraries", app.handleAdminLibraries)
+	mux.HandleFunc("/api/admin/libraries/scan", app.handleAdminScan)
+	mux.HandleFunc("/api/admin/users", app.handleAdminUsers)
+	mux.HandleFunc("/api/admin/update/check", app.handleAdminUpdateCheck)
+	mux.HandleFunc("/api/admin/update/apply", app.handleAdminUpdateApply)
+
+	// Listen on dual-stack "tcp" (binds [::]:port on Linux, serving both IPv4 & IPv6)
+	ln, err := net.Listen("tcp", ":"+*port)
+	if err != nil {
+		log.Fatalf("Listen failed on :%s: %v", *port, err)
+	}
+
+	v4, v6 := getLocalIPs()
+	log.Printf("NASTV Lite Server v%s started on :%s (IPv4/IPv6 dual-stack)", ServerVersionName, *port)
+	log.Printf("Data dir: %s | FFmpeg: %s | VAAPI: %v", *dataDir, transcoder.ffmpegPath, transcoder.hasVAAPI)
+	if len(v4) > 0 {
+		log.Printf("IPv4 URLs: http://%s:%s", strings.Join(v4, ", http://"), *port)
+	}
+	if len(v6) > 0 {
+		log.Printf("IPv6 URLs: http://[%s]:%s", strings.Join(v6, "], http://["), *port)
+	}
+
+	if err := http.Serve(ln, corsMiddleware(mux)); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
+}

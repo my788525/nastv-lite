@@ -1,0 +1,13 @@
+{
+    ".url": {
+        "nastv-lite.Application": {
+            "title": "NASTV Lite",
+            "icon": "images/icon_{0}.png",
+            "type": "url",
+            "protocol": "http",
+            "port": "5678",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CheckBox 按钮：本地矢量，不依赖车机 ROM 平台图（修复选中图标空白） -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true">
+        <layer-list>
+            <item>
+                <shape android:shape="rectangle">
+                    <solid android:color="@color/colorAccent" />
+                    <corners android:radius="4dp" />
+                    <size android:width="20dp" android:height="20dp" />
+                </shape>
+            </item>
+            <item
+                android:drawable="@drawable/ic_check_mark"
+                android:gravity="center" />
+        </layer-list>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/bg_input" />
+            <corners android:radius="4dp" />
+            <stroke
+                android:width="1.5dp"
+                android:color="@color/border_light" />
+            <size android:width="20dp" android:height="20dp" />
+        </shape>
+    </item>
+</selector>

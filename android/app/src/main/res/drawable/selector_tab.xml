@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tab 按钮选择器：选中态用强调色填充，清晰区分当前分区 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 选中 + 聚焦：强调色填充 + 亮边框 -->
+    <item android:state_selected="true" android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#FF3370FF" />
+            <stroke android:width="2dp" android:color="#FF82B1FF" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <!-- 选中（未聚焦）：强调色填充 -->
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#FF3370FF" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <!-- 聚焦但未选中：浅边框高亮 -->
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/bg_input" />
+            <corners android:radius="6dp" />
+            <stroke android:width="2dp" android:color="@color/border_focused" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/transparent" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+</selector>

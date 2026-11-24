@@ -1,0 +1,84 @@
+// App 目录 build.gradle (app/build.gradle)
+plugins {
+    id 'com.android.application'
+}
+
+def keyProps = new Properties()
+def keyPropsFile = rootProject.file('local.properties')
+if (keyPropsFile.exists()) {
+    keyProps.load(new FileInputStream(keyPropsFile))
+}
+
+android {
+    namespace 'com.fntv.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.nastv.lite"
+        minSdkVersion 19
+        targetSdkVersion 32
+        versionCode 1
+        versionName "1.0.0"
+        vectorDrawables.useSupportLibrary = true
+        multiDexEnabled true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "NASTV_Lite_${variant.buildType.name}_v${variant.versionName}_${generateTime()}.apk"
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (keyProps['RELEASE_STORE_FILE'] != null && file(keyProps['RELEASE_STORE_FILE']).exists()) {
+                storeFile file(keyProps['RELEASE_STORE_FILE'])
+                storePassword keyProps['RELEASE_STORE_PASSWORD']
+                keyAlias keyProps['RELEASE_KEY_ALIAS']
+                keyPassword keyProps['RELEASE_KEY_PASSWORD']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (keyProps['RELEASE_STORE_FILE'] != null && file(keyProps['RELEASE_STORE_FILE']).exists()) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled false
+        }
+    }
+}
+
+static def generateTime() {
+    return new java.text.SimpleDateFormat("yyyyMMdd_HHmm", Locale.CHINA).format(new Date())
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.4.1'
+    implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'com.google.android.material:material:1.5.0'
+    implementation 'com.squareup.retrofit2:retrofit:2.6.4'
+    implementation 'com.squareup.retrofit2:converter-gson:2.6.4'
+    implementation 'com.squareup.okhttp3:okhttp:3.12.13'
+    implementation 'com.google.code.gson:gson:2.8.9'
+    implementation 'com.squareup.okhttp3:logging-interceptor:3.12.13'
+    implementation 'com.google.android.exoplayer:exoplayer-core:2.18.7'
+    implementation 'com.google.android.exoplayer:exoplayer-hls:2.18.7'
+    implementation 'com.google.android.exoplayer:exoplayer-ui:2.18.7'
+    implementation 'org.jellyfin.exoplayer:exoplayer-ffmpeg-extension:2.18.7+1'
+}
