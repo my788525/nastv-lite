@@ -6,114 +6,247 @@
 <title>NASTV Lite 管理控制台</title>
 <style>
   :root {
-    --bg: #0f172a; --card: #1e293b; --border: #334155;
+    --bg: #0b1120; --sidebar: #111827; --card: #1e293b; --border: #334155;
     --text: #f8fafc; --muted: #94a3b8; --accent: #38bdf8;
     --green: #22c55e; --red: #ef4444; --orange: #f59e0b;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
-  .container { max-width: 1080px; margin: 0 auto; padding: 24px 16px; }
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-  .brand { font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
-  .badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: rgba(56,189,248,.15); color: var(--accent); border: 1px solid rgba(56,189,248,.3); }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; min-height: 100vh; }
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar { width: 230px; background: var(--sidebar); border-right: 1px solid var(--border); padding: 20px 14px; display: flex; flex-direction: column; flex-shrink: 0; }
+  .brand { font-size: 19px; font-weight: 700; display: flex; align-items: center; gap: 8px; padding: 0 8px 18px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+  .nav-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--muted); display: flex; align-items: center; gap: 10px; margin-bottom: 4px; transition: .15s; }
+  .nav-item:hover { background: rgba(255,255,255,.05); color: var(--text); }
+  .nav-item.active { background: rgba(56,189,248,.15); color: var(--accent); font-weight: 600; }
+  .sidebar-footer { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); }
+  .content { flex: 1; padding: 24px 28px; max-width: 1120px; overflow-x: hidden; }
+  .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+  .page-title { font-size: 21px; font-weight: 700; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: rgba(56,189,248,.15); color: var(--accent); border: 1px solid rgba(56,189,248,.3); display: inline-block; }
   .badge.green { background: rgba(34,197,94,.15); color: var(--green); border-color: rgba(34,197,94,.3); }
   .badge.orange { background: rgba(245,158,11,.15); color: var(--orange); border-color: rgba(245,158,11,.3); }
+  .badge.red { background: rgba(239,68,68,.15); color: #fca5a5; border-color: rgba(239,68,68,.3); }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-  .card-title { font-size: 17px; font-weight: 600; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
-  .stat { background: rgba(15,23,42,.6); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .card-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .stat { background: rgba(15,23,42,.65); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
   .stat-label { font-size: 12px; color: var(--muted); }
   .stat-val { font-size: 15px; font-weight: 600; margin-top: 4px; word-break: break-all; }
-  input, select { background: #0f172a; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 14px; width: 100%; }
-  button { background: var(--accent); color: #0f172a; border: none; border-radius: 8px; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  input, select { background: #0f172a; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; font-size: 14px; width: 100%; }
+  button { background: var(--accent); color: #0f172a; border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
   button.sec { background: #334155; color: var(--text); }
   button.danger { background: rgba(239,68,68,.2); color: #fca5a5; border: 1px solid rgba(239,68,68,.4); }
   button:disabled { opacity: .5; cursor: not-allowed; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); font-size: 14px; }
-  th { color: var(--muted); font-weight: 500; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  th, td { text-align: left; padding: 11px 8px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
   .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
-  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
   .form-group { margin-bottom: 14px; }
   .form-group label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .switch-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: rgba(15,23,42,.55); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; }
+  .switch-row input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: none; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+  .modal { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; }
   .dir-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: #0f172a; margin-top: 8px; }
   .dir-item { padding: 8px 12px; border-bottom: 1px solid #1e293b; cursor: pointer; display: flex; justify-content: space-between; font-size: 13px; }
   .dir-item:hover { background: #1e293b; }
-  .chk-group { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chk-group { display: flex; flex-wrap: wrap; gap: 8px; }
   .chk-item { display: flex; align-items: center; gap: 6px; background: #0f172a; border: 1px solid var(--border); padding: 6px 10px; border-radius: 8px; font-size: 13px; }
   .chk-item input { width: auto; }
-  .login-box { max-width: 380px; margin: 80px auto; }
+  .login-wrap { max-width: 390px; margin: 90px auto; padding: 0 16px; }
+  .log-box { background: #020617; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #cbd5e1; max-height: 280px; overflow-y: auto; white-space: pre-wrap; }
+  .copy-btn { padding: 2px 7px; font-size: 11px; margin-left: 6px; background: #334155; color: var(--text); border-radius: 4px; }
   .hidden { display: none !important; }
+  @media (max-width: 760px) {
+    .layout { flex-direction: column; }
+    .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+    .content { padding: 16px; }
+  }
 </style>
 </head>
 <body>
-<div class="container">
-  <div id="loginView" class="card login-box">
-    <div class="card-title">🎬 NASTV Lite 管理登录</div>
+
+<div id="loginView" class="login-wrap">
+  <div class="card">
+    <div class="card-title">📺 NASTV Lite 管理控制台</div>
     <div class="form-group">
       <label>管理员账号 (默认 admin)</label>
       <input id="loginUser" value="admin">
     </div>
     <div class="form-group">
       <label>密码 (默认 admin123)</label>
-      <input id="loginPass" type="password" value="admin123">
+      <input id="loginPass" type="password" value="admin123" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
-    <button style="width:100%" onclick="doLogin()">登录</button>
+    <button style="width:100%;padding:10px" onclick="doLogin()">登录控制台</button>
     <p id="loginErr" style="color:var(--red);font-size:13px;margin-top:10px"></p>
   </div>
+</div>
 
-  <div id="mainView" class="hidden">
-    <div class="header">
-      <div class="brand">
-        <span>📺 NASTV Lite</span>
-        <span class="badge" id="verBadge">v1.0.0</span>
-        <span class="badge green">双栈 IPv4/IPv6</span>
-      </div>
-      <div class="row-actions">
-        <button class="sec" onclick="checkUpdate()">🔄 检查服务端更新</button>
-        <button class="sec" onclick="logout()">退出登录</button>
-      </div>
+<div id="mainView" class="layout hidden">
+  <aside class="sidebar">
+    <div class="brand">
+      <span>📺 NASTV Lite</span>
+      <span class="badge" id="verBadge">v1.0.1</span>
     </div>
+    <div class="nav-item active" data-tab="dash" onclick="switchTab('dash')">📊 系统概览</div>
+    <div class="nav-item" data-tab="libs" onclick="switchTab('libs')">📚 媒体库管理</div>
+    <div class="nav-item" data-tab="users" onclick="switchTab('users')">👥 用户与权限</div>
+    <div class="nav-item" data-tab="settings" onclick="switchTab('settings')">⚙️ 服务端设置</div>
+    <div class="nav-item" data-tab="updates" onclick="switchTab('updates')">🔄 在线更新</div>
+    <div class="sidebar-footer">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">双栈 IPv4 / IPv6 就绪</div>
+      <button class="sec" style="width:100%" onclick="logout()">退出登录</button>
+    </div>
+  </aside>
 
-    <div id="updateBanner" class="card hidden" style="border-color:var(--accent)">
-      <div class="card-title">
-        <span>🚀 发现服务端新版本：<span id="newVerText"></span></span>
-        <button id="btnApplyUpdate" onclick="applyUpdate()">一键在线升级并重启</button>
+  <main class="content">
+    <!-- Tab 1: Dashboard -->
+    <section id="tab-dash" class="tab-pane">
+      <div class="page-header">
+        <div class="page-title">📊 系统概览与网络状态</div>
+        <button class="sec" onclick="initDashboard()">🔄 刷新状态</button>
       </div>
-      <pre id="changelogText" style="font-size:13px;color:var(--muted);white-space:pre-wrap"></pre>
-    </div>
+      <div class="card">
+        <div class="card-title">访问地址与运行环境</div>
+        <div class="grid" id="statusGrid"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">
+          <span>📝 服务端运行日志 (最近 120 行)</span>
+          <button class="sec" onclick="loadLogs()">刷新日志</button>
+        </div>
+        <div class="log-box" id="logBox">加载中...</div>
+      </div>
+    </section>
 
-    <div class="card">
-      <div class="card-title">系统状态与网络地址</div>
-      <div class="grid" id="statusGrid"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">
-        <span>📚 媒体库管理（支持影视模式与纯文件夹模式）</span>
+    <!-- Tab 2: Libraries -->
+    <section id="tab-libs" class="tab-pane hidden">
+      <div class="page-header">
+        <div class="page-title">📚 媒体库管理（影视剧 & 纯文件夹双模）</div>
         <div class="row-actions">
           <button class="sec" onclick="scanAll()">⚡ 全部扫描</button>
           <button onclick="openLibModal()">+ 添加媒体库</button>
         </div>
       </div>
-      <table>
-        <thead><tr><th>名称</th><th>模式</th><th>目录路径</th><th>条目数</th><th>操作</th></tr></thead>
-        <tbody id="libTable"></tbody>
-      </table>
-    </div>
+      <div class="card">
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+          💡 <b>纯文件夹模式</b>：1:1 映射磁盘目录树，不做强行聚合，适合 MV、儿童动画短片、教育视频；<b>影视剧模式</b>：自动聚合剧集并读取 .nfo 海报墙。
+        </p>
+        <table>
+          <thead><tr><th>名称</th><th>浏览模式</th><th>NAS 目录路径</th><th>索引条目</th><th>操作</th></tr></thead>
+          <tbody id="libTable"></tbody>
+        </table>
+      </div>
+    </section>
 
-    <div class="card">
-      <div class="card-title">
-        <span>👥 多用户与媒体库权限隔离</span>
+    <!-- Tab 3: Users -->
+    <section id="tab-users" class="tab-pane hidden">
+      <div class="page-header">
+        <div class="page-title">👥 多用户与媒体库分权</div>
         <button onclick="openUserModal()">+ 新建用户</button>
       </div>
-      <table>
-        <thead><tr><th>用户名</th><th>角色</th><th>可访问媒体库</th><th>操作</th></tr></thead>
-        <tbody id="userTable"></tbody>
-      </table>
-    </div>
-  </div>
+      <div class="card">
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+          💡 可为车机（如 <code>byd_car</code>）、儿童平板（如 <code>kids</code>）创建独立账号，仅勾选其可访问的媒体库，并支持随时停用账号。
+        </p>
+        <table>
+          <thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>可访问媒体库</th><th>观看记录</th><th>操作</th></tr></thead>
+          <tbody id="userTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Tab 4: Settings -->
+    <section id="tab-settings" class="tab-pane hidden">
+      <div class="page-header">
+        <div class="page-title">⚙️ 服务端详细设置</div>
+        <button onclick="saveSettings()">💾 保存设置</button>
+      </div>
+      <div class="card">
+        <div class="card-title">基础与自动扫描</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>服务器名称（显示在控制台与状态接口）</label>
+            <input id="setServerName" placeholder="NASTV Lite">
+          </div>
+          <div class="form-group">
+            <label>定时后台自动扫描媒体库</label>
+            <select id="setAutoScan">
+              <option value="0">关闭自动扫描（仅手动）</option>
+              <option value="1">每 1 小时扫描一次</option>
+              <option value="6">每 6 小时扫描一次（推荐）</option>
+              <option value="24">每 24 小时扫描一次</option>
+            </select>
+          </div>
+        </div>
+        <div class="switch-row">
+          <div>
+            <div style="font-weight:600;font-size:14px">FFmpeg 自动提取视频封面缩略图</div>
+            <div style="font-size:12px;color:var(--muted)">纯文件夹模式下若无海报图，自动抽取第 10 秒画面作封面</div>
+          </div>
+          <input type="checkbox" id="setThumbs">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">转码引擎与 HLS 参数（弱网流畅播放核心）</div>
+        <div class="switch-row">
+          <div>
+            <div style="font-weight:600;font-size:14px">启用 Intel / AMD 核显硬件转码 (VAAPI)</div>
+            <div style="font-size:12px;color:var(--muted)">自动使用 /dev/dri/renderD128 加速转码，降低 CPU 占用</div>
+          </div>
+          <input type="checkbox" id="setVAAPI">
+        </div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="form-group">
+            <label>软解兜底编码预设（无核显或 VAAPI 关闭时生效）</label>
+            <select id="setPreset">
+              <option value="ultrafast">ultrafast（最低 CPU 占用）</option>
+              <option value="veryfast">veryfast（均衡推荐）</option>
+              <option value="fast">fast（较高画质）</option>
+              <option value="medium">medium（高画质，CPU 消耗大）</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>HLS 切片时长（秒）</label>
+            <select id="setHlsSeg">
+              <option value="2">2 秒（起播更快，弱网切换灵敏）</option>
+              <option value="4">4 秒（标准推荐）</option>
+              <option value="6">6 秒（减少请求次数）</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">缓存与临时文件维护</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px" id="cacheSummary">当前缩略图与 HLS 缓存占用：计算中...</p>
+        <button class="danger" onclick="clearCaches()">🗑️ 一键清理缩略图与转码缓存</button>
+      </div>
+    </section>
+
+    <!-- Tab 5: Updates -->
+    <section id="tab-updates" class="tab-pane hidden">
+      <div class="page-header">
+        <div class="page-title">🔄 在线检查更新与一键升级</div>
+        <button onclick="checkUpdate()">检查 GitHub 最新版本</button>
+      </div>
+      <div class="card">
+        <div class="card-title">当前服务端版本：<span id="curVerTxt">v1.0.1</span></div>
+        <p style="font-size:13px;color:var(--muted)">
+          升级时会从 GitHub Releases 自动拉取最新 <code>nastv-server-linux-amd64</code> 二进制，原子替换并自动重启服务，保留全部媒体库、用户权限与观看记录。
+        </p>
+        <div id="updateResultBox" class="hidden" style="margin-top:16px;padding:14px;border:1px solid var(--accent);border-radius:8px;background:rgba(56,189,248,.06)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <b id="newVerText" style="color:var(--accent)"></b>
+            <button id="btnApplyUpdate" onclick="applyUpdate()">🚀 一键在线升级并重启</button>
+          </div>
+          <pre id="changelogText" style="font-size:13px;color:var(--muted);white-space:pre-wrap"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
 </div>
 
 <!-- Library Modal -->
@@ -135,8 +268,8 @@
     <div class="form-group">
       <label>NAS 目录路径（可点击下方浏览或手动输入，多个路径用逗号分隔）</label>
       <input id="libPaths" placeholder="/vol1/1000/MV">
-      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-        <span style="font-size:12px;color:var(--muted)">当前浏览：<span id="fsCurrent">/</span></span>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--muted)">当前：<span id="fsCurrent">/</span></span>
         <button class="sec" style="padding:4px 8px;font-size:12px" onclick="browseFS(fsParent)">⬆ 上级</button>
         <button class="sec" style="padding:4px 8px;font-size:12px" onclick="selectCurrentDir()">✓ 选中此目录</button>
       </div>
@@ -166,6 +299,10 @@
         <option value="admin">管理员（可访问全部库及控制台）</option>
       </select>
     </div>
+    <div class="switch-row" id="userDisabledRow">
+      <span style="font-size:13px">停用该账号（禁止登录与播放）</span>
+      <input type="checkbox" id="userDisabled">
+    </div>
     <div class="form-group">
       <label>授权可见的媒体库</label>
       <div class="chk-group" id="userLibChecks"></div>
@@ -180,6 +317,14 @@ let cachedLibs = [];
 let cachedUsers = [];
 let fsParent = '/';
 let pendingBinaryUrl = '';
+
+function switchTab(tab) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+  document.getElementById('tab-' + tab).classList.remove('hidden');
+  if (tab === 'dash') loadLogs();
+  if (tab === 'settings') loadSettings();
+}
 
 async function api(url, opts = {}) {
   opts.headers = opts.headers || {};
@@ -221,6 +366,10 @@ function logout() {
   document.getElementById('loginView').classList.remove('hidden');
 }
 
+function copyText(txt) {
+  navigator.clipboard?.writeText(txt);
+}
+
 async function initDashboard() {
   if (!token) return;
   try {
@@ -230,23 +379,34 @@ async function initDashboard() {
     document.getElementById('mainView').classList.remove('hidden');
     const d = st.data;
     document.getElementById('verBadge').innerText = 'v' + d.version_name;
-    const v4Str = (d.ipv4 && d.ipv4.length) ? d.ipv4.map(ip => `http://${ip}:${d.port}`).join('<br>') : '无';
-    const v6Str = (d.ipv6 && d.ipv6.length) ? d.ipv6.map(ip => `http://[${ip}]:${d.port}`).join('<br>') : '无公网/ULA IPv6';
+    document.getElementById('curVerTxt').innerText = 'v' + d.version_name + ' (Build ' + d.version_code + ')';
+    const v4Html = (d.ipv4 && d.ipv4.length) ? d.ipv4.map(ip => `http://${ip}:${d.port} <button class="copy-btn" onclick="copyText('http://${ip}:${d.port}')">复制</button>`).join('<br>') : '无';
+    const v6Html = (d.ipv6 && d.ipv6.length) ? d.ipv6.map(ip => `http://[${ip}]:${d.port} <button class="copy-btn" onclick="copyText('http://[${ip}]:${d.port}')">复制</button>`).join('<br>') : '无 IPv6 地址';
+    const mb = ((d.cache_bytes || 0) / 1048576).toFixed(2);
     document.getElementById('statusGrid').innerHTML = `
-      <div class="stat"><div class="stat-label">IPv4 访问地址</div><div class="stat-val">${v4Str}</div></div>
-      <div class="stat"><div class="stat-label">IPv6 访问地址</div><div class="stat-val">${v6Str}</div></div>
-      <div class="stat"><div class="stat-label">转码引擎</div><div class="stat-val">${d.has_ffmpeg ? 'FFmpeg 就绪' : '未检测到 FFmpeg'} ${d.has_vaapi ? '· 🚀 VAAPI硬解' : ''}</div></div>
-      <div class="stat"><div class="stat-label">库 / 媒体条目 / 用户</div><div class="stat-val">${d.lib_count} 库 · ${d.item_count} 项 · ${d.user_count} 用户</div></div>
+      <div class="stat"><div class="stat-label">IPv4 客户端连接地址</div><div class="stat-val">${v4Html}</div></div>
+      <div class="stat"><div class="stat-label">IPv6 客户端连接地址</div><div class="stat-val">${v6Html}</div></div>
+      <div class="stat"><div class="stat-label">转码引擎</div><div class="stat-val">${d.has_ffmpeg ? 'FFmpeg 就绪' : '未检测到 FFmpeg'} ${d.has_vaapi ? '<span class="badge green">VAAPI 硬解</span>' : ''}</div></div>
+      <div class="stat"><div class="stat-label">库 / 条目 / 用户 / 活跃转码</div><div class="stat-val">${d.lib_count} 库 · ${d.item_count} 项 · ${d.user_count} 用户 · ${d.active_hls || 0} 路转码</div></div>
     `;
-    await Promise.all([loadLibs(), loadUsers()]);
+    document.getElementById('cacheSummary').innerText = `当前缩略图 (${d.thumb_count || 0} 张) 与 HLS 转码缓存共占用：${mb} MB`;
+    await Promise.all([loadLibs(), loadUsers(), loadLogs()]);
+  } catch (e) {}
+}
+
+async function loadLogs() {
+  try {
+    const r = await api('/api/admin/logs');
+    const box = document.getElementById('logBox');
+    box.innerText = r.data?.logs || '暂无日志';
+    box.scrollTop = box.scrollHeight;
   } catch (e) {}
 }
 
 async function loadLibs() {
   const r = await api('/api/admin/libraries');
   cachedLibs = r.data || [];
-  const tbody = document.getElementById('libTable');
-  tbody.innerHTML = cachedLibs.map(l => `
+  document.getElementById('libTable').innerHTML = cachedLibs.map(l => `
     <tr>
       <td><b>${l.name}</b></td>
       <td>${l.mode === 'folder' ? '<span class="badge green">📁 纯文件夹</span>' : '<span class="badge">🎬 影视剧</span>'}</td>
@@ -258,7 +418,7 @@ async function loadLibs() {
         <button class="danger" onclick="delLib('${l.id}')">删除</button>
       </td>
     </tr>
-  `).join('');
+  `).join('') || '<tr><td colspan="5" style="color:var(--muted);text-align:center">暂无媒体库，请点击右上角添加</td></tr>';
 }
 
 async function loadUsers() {
@@ -272,7 +432,9 @@ async function loadUsers() {
       <tr>
         <td><b>${u.username}</b></td>
         <td>${u.role === 'admin' ? '<span class="badge orange">管理员</span>' : '普通用户'}</td>
+        <td>${u.disabled ? '<span class="badge red">已停用</span>' : '<span class="badge green">正常</span>'}</td>
         <td style="font-size:13px;color:var(--muted)">${libsTxt}</td>
+        <td>${u.watch_count || 0} 条</td>
         <td class="row-actions">
           <button class="sec" onclick="editUser('${u.id}')">权限/编辑</button>
           ${u.role !== 'admin' ? `<button class="danger" onclick="delUser('${u.id}')">删除</button>` : ''}
@@ -280,6 +442,39 @@ async function loadUsers() {
       </tr>
     `;
   }).join('');
+}
+
+async function loadSettings() {
+  const r = await api('/api/admin/settings');
+  if (r.code !== 0) return;
+  const s = r.data;
+  document.getElementById('setServerName').value = s.server_name || 'NASTV Lite';
+  document.getElementById('setAutoScan').value = String(s.auto_scan_hours ?? 6);
+  document.getElementById('setThumbs').checked = !!s.enable_thumbnails;
+  document.getElementById('setVAAPI').checked = !!s.enable_vaapi;
+  document.getElementById('setPreset').value = s.transcode_preset || 'veryfast';
+  document.getElementById('setHlsSeg').value = String(s.hls_segment_sec || 4);
+}
+
+async function saveSettings() {
+  const body = {
+    server_name: document.getElementById('setServerName').value.trim() || 'NASTV Lite',
+    auto_scan_hours: parseInt(document.getElementById('setAutoScan').value, 10) || 0,
+    enable_thumbnails: document.getElementById('setThumbs').checked,
+    enable_vaapi: document.getElementById('setVAAPI').checked,
+    transcode_preset: document.getElementById('setPreset').value,
+    hls_segment_sec: parseInt(document.getElementById('setHlsSeg').value, 10) || 4,
+  };
+  const r = await api('/api/admin/settings', { method: 'POST', body });
+  if (r.code === 0) alert('服务端设置已保存并立即生效');
+  else alert(r.msg);
+}
+
+async function clearCaches() {
+  if (!confirm('确认清理所有缩略图与 HLS 临时转码文件？')) return;
+  await api('/api/admin/cache/clear', { method: 'POST' });
+  alert('缓存已清空');
+  initDashboard();
 }
 
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
@@ -315,8 +510,7 @@ async function browseFS(path) {
   }
   document.getElementById('fsCurrent').innerText = r.data.current;
   fsParent = r.data.parent;
-  const list = document.getElementById('dirList');
-  list.innerHTML = (r.data.dirs || []).map(d => `
+  document.getElementById('dirList').innerHTML = (r.data.dirs || []).map(d => `
     <div class="dir-item" onclick="browseFS('${d.path.replace(/'/g, "\\'")}')">
       <span>📁 ${d.name}</span><span style="color:var(--muted)">进入 →</span>
     </div>
@@ -366,7 +560,7 @@ function renderLibChecks(selected = []) {
       <input type="checkbox" value="${l.id}" ${selected.includes(l.id) ? 'checked' : ''}>
       ${l.name} (${l.mode === 'folder' ? '文件夹' : '影视'})
     </label>
-  `).join('');
+  `).join('') || '<span style="font-size:12px;color:var(--muted)">请先添加媒体库</span>';
 }
 
 function openUserModal() {
@@ -375,6 +569,8 @@ function openUserModal() {
   document.getElementById('userName').value = '';
   document.getElementById('userPass').value = '';
   document.getElementById('userRole').value = 'user';
+  document.getElementById('userDisabled').checked = false;
+  document.getElementById('userDisabledRow').classList.remove('hidden');
   renderLibChecks([]);
   openModal('userModal');
 }
@@ -387,6 +583,8 @@ function editUser(id) {
   document.getElementById('userName').value = u.username;
   document.getElementById('userPass').value = '';
   document.getElementById('userRole').value = u.role;
+  document.getElementById('userDisabled').checked = !!u.disabled;
+  document.getElementById('userDisabledRow').classList.toggle('hidden', u.role === 'admin');
   renderLibChecks(u.allowed_libs || []);
   openModal('userModal');
 }
@@ -396,8 +594,9 @@ async function saveUser() {
   const username = document.getElementById('userName').value.trim();
   const password = document.getElementById('userPass').value;
   const role = document.getElementById('userRole').value;
+  const disabled = document.getElementById('userDisabled').checked;
   const allowed_libs = Array.from(document.querySelectorAll('#userLibChecks input:checked')).map(x => x.value);
-  const r = await api('/api/admin/users', { method: 'POST', body: { id, username, password, role, allowed_libs } });
+  const r = await api('/api/admin/users', { method: 'POST', body: { id, username, password, role, allowed_libs, disabled } });
   if (r.code !== 0) { alert(r.msg); return; }
   closeModal('userModal');
   loadUsers();
@@ -417,9 +616,9 @@ async function checkUpdate() {
     return;
   }
   pendingBinaryUrl = r.data.latest.binaryUrl;
-  document.getElementById('newVerText').innerText = 'v' + r.data.latest.versionName;
+  document.getElementById('newVerText').innerText = '发现新版本 v' + r.data.latest.versionName;
   document.getElementById('changelogText').innerText = r.data.latest.changelog || '';
-  document.getElementById('updateBanner').classList.remove('hidden');
+  document.getElementById('updateResultBox').classList.remove('hidden');
 }
 
 async function applyUpdate() {
@@ -430,10 +629,10 @@ async function applyUpdate() {
   if (r.code !== 0) {
     alert(r.msg);
     btn.disabled = false;
-    btn.innerText = '一键在线升级并重启';
+    btn.innerText = '🚀 一键在线升级并重启';
     return;
   }
-  setTimeout(() => location.reload(), 3000);
+  setTimeout(() => location.reload(), 3500);
 }
 
 if (token) initDashboard();

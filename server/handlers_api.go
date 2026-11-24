@@ -402,7 +402,7 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	sessDir, err := app.transcoder.EnsureHLS(it, quality)
+	sessDir, err := app.transcoder.EnsureHLS(it, quality, app.store.GetSettings())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -423,7 +423,7 @@ func (app *App) handleImg(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	p := app.transcoder.EnsureThumbnail(it)
+	p := app.transcoder.EnsureThumbnail(it, app.store.GetSettings().EnableThumbnails)
 	if p == "" {
 		http.NotFound(w, r)
 		return

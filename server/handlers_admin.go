@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -68,17 +69,25 @@ func (app *App) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 	itemCount := len(app.store.data.Items)
 	app.store.mu.RUnlock()
 
+	activeHLS, thumbCnt, cacheBytes := app.transcoder.GetCacheStats()
+	settings := app.store.GetSettings()
+
 	okResp(w, map[string]interface{}{
-		"version_code": ServerVersionCode,
-		"version_name": ServerVersionName,
-		"port":         app.port,
-		"ipv4":         v4,
-		"ipv6":         v6,
-		"has_ffmpeg":   app.transcoder.ffmpegPath != "",
-		"has_vaapi":    app.transcoder.hasVAAPI,
-		"lib_count":    libCount,
-		"user_count":   userCount,
-		"item_count":   itemCount,
+		"version_code":    ServerVersionCode,
+		"version_name":    ServerVersionName,
+		"server_name":     settings.ServerName,
+		"port":            app.port,
+		"ipv4":            v4,
+		"ipv6":            v6,
+		"has_ffmpeg":      app.transcoder.ffmpegPath != "",
+		"has_vaapi":       app.transcoder.hasVAAPI,
+		"lib_count":       libCount,
+		"user_count":      userCount,
+		"item_count":      itemCount,
+		"active_hls":      activeHLS,
+		"thumb_count":     thumbCnt,
+		"cache_bytes":     cacheBytes,
+		"auto_scan_hours": settings.AutoScanHours,
 	})
 }
 
@@ -89,6 +98,24 @@ func (app *App) handleAdminFS(w http.ResponseWriter, r *http.Request) {
 	dir := r.URL.Query().Get("path")
 	if dir == "" {
 		dir = "/"
+	}
+	if runtime.GOOS == "windows" && (dir == "/" || dir == "\\") {
+		var drives []map[string]string
+		for c := 'C'; c <= 'Z'; c++ {
+			root := string(c) + `:\`
+			if _, err := os.Stat(root); err == nil {
+				drives = append(drives, map[string]string{
+					"name": "本地磁盘 (" + string(c) + ":)",
+					"path": root,
+				})
+			}
+		}
+		okResp(w, map[string]interface{}{
+			"current": "/",
+			"parent":  "/",
+			"dirs":    drives,
+		})
+		return
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -108,9 +135,13 @@ func (app *App) handleAdminFS(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(dirs, func(i, j int) bool {
 		return dirs[i]["name"] < dirs[j]["name"]
 	})
+	parent := filepath.Dir(dir)
+	if runtime.GOOS == "windows" && parent == dir {
+		parent = "/"
+	}
 	okResp(w, map[string]interface{}{
 		"current": dir,
-		"parent":  filepath.Dir(dir),
+		"parent":  parent,
 		"dirs":    dirs,
 	})
 }
@@ -255,6 +286,10 @@ func (app *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		app.store.mu.RLock()
+		recCounts := make(map[string]int)
+		for _, rec := range app.store.data.Records {
+			recCounts[rec.UserID]++
+		}
 		var users []map[string]interface{}
 		for _, u := range app.store.data.Users {
 			users = append(users, map[string]interface{}{
@@ -262,6 +297,8 @@ func (app *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 				"username":     u.Username,
 				"role":         u.Role,
 				"allowed_libs": u.AllowedLibs,
+				"disabled":     u.Disabled,
+				"watch_count":  recCounts[u.ID],
 				"created_at":   u.CreatedAt,
 			})
 		}
@@ -275,6 +312,7 @@ func (app *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 			Password    string   `json:"password"`
 			Role        string   `json:"role"`
 			AllowedLibs []string `json:"allowed_libs"`
+			Disabled    bool     `json:"disabled"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			errResp(w, 400, "请求格式错误")
@@ -304,6 +342,9 @@ func (app *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 			}
 			u.Role = req.Role
 			u.AllowedLibs = req.AllowedLibs
+			if u.ID != admin.ID {
+				u.Disabled = req.Disabled
+			}
 		} else {
 			if strings.TrimSpace(req.Username) == "" || strings.TrimSpace(req.Password) == "" {
 				app.store.mu.Unlock()
@@ -378,4 +419,53 @@ func (app *App) handleAdminUpdateApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	okResp(w, map[string]string{"status": "updating_and_restarting"})
+}
+
+func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	if r.Method == http.MethodGet {
+		okResp(w, app.store.GetSettings())
+		return
+	}
+	if r.Method == http.MethodPost {
+		var cfg ServerSettings
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			errResp(w, 400, "请求格式错误")
+			return
+		}
+		if err := app.store.UpdateSettings(cfg); err != nil {
+			errResp(w, 500, err.Error())
+			return
+		}
+		okResp(w, app.store.GetSettings())
+		return
+	}
+	errResp(w, 405, "method not allowed")
+}
+
+func (app *App) handleAdminCacheClear(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	app.transcoder.ClearCaches()
+	okResp(w, map[string]bool{"cleared": true})
+}
+
+func (app *App) handleAdminLogs(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	logPath := filepath.Join(app.dataDir, "info.log")
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		okResp(w, map[string]string{"logs": "暂无运行日志（或当前运行于前台标准输出模式）"})
+		return
+	}
+	lines := strings.Split(strings.TrimRight(string(raw), "\r\n"), "\n")
+	if len(lines) > 120 {
+		lines = lines[len(lines)-120:]
+	}
+	okResp(w, map[string]string{"logs": strings.Join(lines, "\n")})
 }

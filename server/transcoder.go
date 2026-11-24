@@ -160,13 +160,13 @@ func (t *Transcoder) ProbeItem(s *Store, item *MediaItem) {
 	s.mu.Unlock()
 }
 
-func (t *Transcoder) EnsureThumbnail(item *MediaItem) string {
+func (t *Transcoder) EnsureThumbnail(item *MediaItem, enabled bool) string {
 	if item.PosterPath != "" {
 		if _, err := os.Stat(item.PosterPath); err == nil {
 			return item.PosterPath
 		}
 	}
-	if t.ffmpegPath == "" || item.FilePath == "" || item.Type == "Directory" || item.Type == "TV" || item.Type == "Audio" {
+	if !enabled || t.ffmpegPath == "" || item.FilePath == "" || item.Type == "Directory" || item.Type == "TV" || item.Type == "Audio" {
 		return ""
 	}
 	thumbPath := filepath.Join(t.thumbDir, item.Guid+".jpg")
@@ -187,13 +187,21 @@ func (t *Transcoder) EnsureThumbnail(item *MediaItem) string {
 	return ""
 }
 
-func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string) (string, error) {
+func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSettings) (string, error) {
 	if t.ffmpegPath == "" {
 		return "", fmt.Errorf("ffmpeg 未安装")
 	}
 	prof := FindQualityProfile(qualityKey)
 	if prof == nil || prof.Key == "original" {
 		return "", fmt.Errorf("invalid transcode quality")
+	}
+	segSec := cfg.HLSSegmentSec
+	if segSec <= 0 {
+		segSec = 4
+	}
+	preset := cfg.TranscodePreset
+	if preset == "" {
+		preset = "veryfast"
 	}
 	sessKey := item.Guid + "_" + qualityKey
 
@@ -219,10 +227,10 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string) (string, erro
 		args = []string{
 			"-y", "-i", item.FilePath,
 			"-vn", "-c:a", "aac", "-b:a", "128k", "-ac", "2",
-			"-f", "hls", "-hls_time", "4", "-hls_list_size", "0",
+			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
 			"-hls_segment_filename", segPattern, m3u8Path,
 		}
-	} else if t.hasVAAPI {
+	} else if t.hasVAAPI && cfg.EnableVAAPI {
 		// Intel/AMD VAAPI hardware transcode
 		scaleFilter := fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", prof.Height)
 		args = []string{
@@ -231,20 +239,20 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string) (string, erro
 			"-vf", scaleFilter,
 			"-c:v", "h264_vaapi", "-b:v", fmt.Sprintf("%d", prof.Bitrate),
 			"-c:a", "aac", "-b:a", "192k", "-ac", "2",
-			"-f", "hls", "-hls_time", "4", "-hls_list_size", "0",
+			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
 			"-hls_segment_filename", segPattern, m3u8Path,
 		}
 	} else {
-		// Software fallback libx264 veryfast
+		// Software fallback libx264
 		scaleFilter := fmt.Sprintf("scale=-2:%d", prof.Height)
 		args = []string{
 			"-y", "-i", item.FilePath,
 			"-vf", scaleFilter,
-			"-c:v", "libx264", "-preset", "veryfast", "-b:v", fmt.Sprintf("%d", prof.Bitrate),
+			"-c:v", "libx264", "-preset", preset, "-b:v", fmt.Sprintf("%d", prof.Bitrate),
 			"-maxrate", fmt.Sprintf("%d", prof.Bitrate*12/10),
 			"-bufsize", fmt.Sprintf("%d", prof.Bitrate*2),
 			"-c:a", "aac", "-b:a", "192k", "-ac", "2",
-			"-f", "hls", "-hls_time", "4", "-hls_list_size", "0",
+			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
 			"-hls_segment_filename", segPattern, m3u8Path,
 		}
 	}
@@ -275,4 +283,42 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string) (string, erro
 		time.Sleep(200 * time.Millisecond)
 	}
 	return sessDir, nil
+}
+
+func (t *Transcoder) GetCacheStats() (activeSessions int, thumbCount int, cacheBytes int64) {
+	t.mu.Lock()
+	activeSessions = len(t.sessions)
+	t.mu.Unlock()
+	_ = filepath.WalkDir(t.thumbDir, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			thumbCount++
+			if info, e := d.Info(); e == nil {
+				cacheBytes += info.Size()
+			}
+		}
+		return nil
+	})
+	_ = filepath.WalkDir(t.hlsRoot, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if info, e := d.Info(); e == nil {
+				cacheBytes += info.Size()
+			}
+		}
+		return nil
+	})
+	return
+}
+
+func (t *Transcoder) ClearCaches() {
+	t.mu.Lock()
+	for k, sess := range t.sessions {
+		if sess.Cmd != nil && sess.Cmd.Process != nil {
+			_ = sess.Cmd.Process.Kill()
+		}
+		_ = os.RemoveAll(sess.Dir)
+		delete(t.sessions, k)
+	}
+	t.mu.Unlock()
+	_ = os.RemoveAll(t.thumbDir)
+	_ = os.MkdirAll(t.thumbDir, 0755)
 }

@@ -43,6 +43,17 @@ func NewStore(dataDir string) (*Store, error) {
 		s.data.JWTSecret = randomHex(32)
 		changed = true
 	}
+	if s.data.Settings.ServerName == "" {
+		s.data.Settings = ServerSettings{
+			ServerName:       "NASTV Lite",
+			EnableVAAPI:      true,
+			TranscodePreset:  "veryfast",
+			HLSSegmentSec:    4,
+			AutoScanHours:    6,
+			EnableThumbnails: true,
+		}
+		changed = true
+	}
 	if len(s.data.Users) == 0 {
 		admin := s.newUserObj("admin", "admin123", "admin", []string{"*"})
 		s.data.Users[admin.ID] = admin
@@ -126,6 +137,9 @@ func (s *Store) Authenticate(username, password string) (*User, error) {
 	defer s.mu.RUnlock()
 	for _, u := range s.data.Users {
 		if strings.EqualFold(u.Username, username) {
+			if u.Disabled {
+				return nil, errors.New("该账号已被管理员禁用")
+			}
 			if u.Password == hashPassword(u.Salt, password) {
 				cp := *u
 				return &cp, nil
@@ -199,8 +213,8 @@ func (s *Store) VerifyToken(tokenStr string) (*User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	u, ok := s.data.Users[claims.UserID]
-	if !ok {
-		return nil, errors.New("user not found")
+	if !ok || u.Disabled {
+		return nil, errors.New("user not found or disabled")
 	}
 	cp := *u
 	return &cp, nil
@@ -278,4 +292,26 @@ func (s *Store) GetWatchTs(userID, itemGuid string) int64 {
 		return rec.Ts
 	}
 	return 0
+}
+
+func (s *Store) GetSettings() ServerSettings {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data.Settings
+}
+
+func (s *Store) UpdateSettings(cfg ServerSettings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cfg.ServerName == "" {
+		cfg.ServerName = "NASTV Lite"
+	}
+	if cfg.TranscodePreset == "" {
+		cfg.TranscodePreset = "veryfast"
+	}
+	if cfg.HLSSegmentSec <= 0 {
+		cfg.HLSSegmentSec = 4
+	}
+	s.data.Settings = cfg
+	return s.saveLocked()
 }

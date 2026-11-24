@@ -7,8 +7,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 )
 
 //go:embed web/index.html
@@ -93,8 +96,32 @@ func main() {
 	mux.HandleFunc("/api/admin/libraries", app.handleAdminLibraries)
 	mux.HandleFunc("/api/admin/libraries/scan", app.handleAdminScan)
 	mux.HandleFunc("/api/admin/users", app.handleAdminUsers)
+	mux.HandleFunc("/api/admin/settings", app.handleAdminSettings)
+	mux.HandleFunc("/api/admin/cache/clear", app.handleAdminCacheClear)
+	mux.HandleFunc("/api/admin/logs", app.handleAdminLogs)
 	mux.HandleFunc("/api/admin/update/check", app.handleAdminUpdateCheck)
 	mux.HandleFunc("/api/admin/update/apply", app.handleAdminUpdateApply)
+
+	// Background auto-scan scheduler
+	go func() {
+		lastScan := time.Now()
+		for {
+			time.Sleep(5 * time.Minute)
+			hours := app.store.GetSettings().AutoScanHours
+			if hours > 0 && time.Since(lastScan) >= time.Duration(hours)*time.Hour {
+				lastScan = time.Now()
+				app.store.mu.RLock()
+				var ids []string
+				for id := range app.store.data.Libraries {
+					ids = append(ids, id)
+				}
+				app.store.mu.RUnlock()
+				for _, id := range ids {
+					_, _ = ScanLibrary(app.store, id)
+				}
+			}
+		}
+	}()
 
 	// Listen on dual-stack "tcp" (binds [::]:port on Linux, serving both IPv4 & IPv6)
 	ln, err := net.Listen("tcp", ":"+*port)
@@ -110,6 +137,13 @@ func main() {
 	}
 	if len(v6) > 0 {
 		log.Printf("IPv6 URLs: http://[%s]:%s", strings.Join(v6, "], http://["), *port)
+	}
+
+	if runtime.GOOS == "windows" {
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", "http://127.0.0.1:"+*port).Start()
+		}()
 	}
 
 	if err := http.Serve(ln, corsMiddleware(mux)); err != nil {

@@ -13,7 +13,18 @@ type User struct {
 	Salt        string   `json:"salt"`
 	Role        string   `json:"role"`         // "admin" or "user"
 	AllowedLibs []string `json:"allowed_libs"` // library IDs; ["*"] or admin sees all
+	Disabled    bool     `json:"disabled"`
 	CreatedAt   int64    `json:"created_at"`
+}
+
+type ServerSettings struct {
+	ServerName       string `json:"server_name"`
+	EnableVAAPI      bool   `json:"enable_vaapi"`
+	TranscodePreset  string `json:"transcode_preset"`   // ultrafast, veryfast, fast, medium
+	HLSSegmentSec    int    `json:"hls_segment_sec"`    // 2, 4, 6
+	AutoScanHours    int    `json:"auto_scan_hours"`    // 0=off, 1, 6, 24
+	EnableThumbnails bool   `json:"enable_thumbnails"`  // auto ffmpeg frame thumbs
+	AllowGuestSearch bool   `json:"allow_guest_search"` // reserved
 }
 
 type Library struct {
@@ -73,6 +84,7 @@ type WatchRecord struct {
 
 type StoreData struct {
 	JWTSecret string                 `json:"jwt_secret"`
+	Settings  ServerSettings         `json:"settings"`
 	Users     map[string]*User       `json:"users"`
 	Libraries map[string]*Library    `json:"libraries"`
 	Items     map[string]*MediaItem  `json:"items"`

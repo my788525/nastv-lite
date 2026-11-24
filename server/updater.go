@@ -8,21 +8,23 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
 const (
-	ServerVersionCode = 1
-	ServerVersionName = "1.0.0"
+	ServerVersionCode = 2
+	ServerVersionName = "1.0.1"
 	UpdateManifestURL = "https://raw.githubusercontent.com/my788525/nastv-lite/main/update.json"
 )
 
 type ServerUpdateInfo struct {
-	VersionCode int    `json:"versionCode"`
-	VersionName string `json:"versionName"`
-	BinaryURL   string `json:"binaryUrl"`
-	FpkURL      string `json:"fpkUrl"`
-	Changelog   string `json:"changelog"`
+	VersionCode  int    `json:"versionCode"`
+	VersionName  string `json:"versionName"`
+	BinaryURL    string `json:"binaryUrl"`
+	WinBinaryURL string `json:"winBinaryUrl"`
+	FpkURL       string `json:"fpkUrl"`
+	Changelog    string `json:"changelog"`
 }
 
 type UnifiedUpdateManifest struct {
@@ -55,7 +57,12 @@ func CheckServerUpdate() (*UpdateCheckResult, error) {
 		CurrentCode: ServerVersionCode,
 		CurrentName: ServerVersionName,
 		HasUpdate:   m.Server.VersionCode > ServerVersionCode,
-		Latest:      m.Server,
+		Latest:      func() ServerUpdateInfo {
+			if runtime.GOOS == "windows" && m.Server.WinBinaryURL != "" {
+				m.Server.BinaryURL = m.Server.WinBinaryURL
+			}
+			return m.Server
+		}(),
 	}, nil
 }
 
@@ -91,7 +98,14 @@ func PerformServerSelfUpdate(binaryURL string) error {
 	}
 	f.Close()
 
-	// On Linux, os.Rename atomically replaces the executable on disk even while running
+	if runtime.GOOS == "windows" {
+		oldPath := exePath + ".old"
+		_ = os.Remove(oldPath)
+		if err := os.Rename(exePath, oldPath); err != nil {
+			_ = os.Remove(tmpPath)
+			return err
+		}
+	}
 	if err := os.Rename(tmpPath, exePath); err != nil {
 		_ = os.Remove(tmpPath)
 		return err

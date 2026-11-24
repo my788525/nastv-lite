@@ -1,10 +1,11 @@
 {
   "server": {
-    "versionCode": 1,
-    "versionName": "1.0.0",
-    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.0/nastv-server-linux-amd64",
-    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.0/nastv-lite-x86_64-v1.0.0.fpk",
-    "changelog": "NASTV Lite v1.0.0 首发：\n1. 原生飞牛 FPK 打包（无需 Docker），支持 x86_64。\n2. 媒体库双模式：支持「影视剧模式」与「纯文件夹模式」并存。\n3. 多用户与媒体库分权隔离。\n4. FFmpeg 硬件转码（VAAPI）与多清晰度 HLS。\n5. IPv4 / IPv6 双栈监听与 Web 管理台一键在线更新。"
+    "versionCode": 2,
+    "versionName": "1.0.1",
+    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.1/nastv-server-linux-amd64",
+    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.1/nastv-server-windows-amd64.exe",
+    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.1/nastv-lite-x86_64-v1.0.1.fpk",
+    "changelog": "NASTV Lite 服务端 v1.0.1：\n1. 升级为多标签页专业 Web 管理控制台（系统概览、媒体库、用户与权限、服务端设置、在线更新）。\n2. 新增服务端详细设置：VAAPI 硬件转码开关、编码预设、HLS 切片时长、定时自动扫描间隔、FFmpeg 封面提取开关与缓存一键清理。\n3. 增强用户管理：支持账号启用/停用、观看记录统计与精细媒体库授权。\n4. 新增实时运行日志查看与 IPv4/IPv6 地址一键复制。"
   },
   "android": {
     "versionCode": 1,
