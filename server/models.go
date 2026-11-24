@@ -24,6 +24,9 @@ type ServerSettings struct {
 	HLSSegmentSec    int    `json:"hls_segment_sec"`    // 2, 4, 6
 	AutoScanHours    int    `json:"auto_scan_hours"`    // 0=off, 1, 6, 24
 	EnableThumbnails bool   `json:"enable_thumbnails"`  // auto ffmpeg frame thumbs
+	EnableScraper    bool   `json:"enable_scraper"`     // auto public metadata scraper for movie_tv libs
+	TMDBApiKey       string `json:"tmdb_api_key"`       // optional TMDB v3 API key
+	TMDBMirror       string `json:"tmdb_mirror"`        // optional TMDB API base URL mirror
 	AllowGuestSearch bool   `json:"allow_guest_search"` // reserved
 }
 

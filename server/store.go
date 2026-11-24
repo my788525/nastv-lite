@@ -52,6 +52,7 @@ func NewStore(dataDir string) (*Store, error) {
 			HLSSegmentSec:    4,
 			AutoScanHours:    6,
 			EnableThumbnails: true,
+			EnableScraper:    true,
 		}
 		changed = true
 	}

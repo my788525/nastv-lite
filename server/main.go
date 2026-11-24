@@ -108,6 +108,7 @@ func main() {
 	mux.HandleFunc("/api/admin/fs", app.handleAdminFS)
 	mux.HandleFunc("/api/admin/libraries", app.handleAdminLibraries)
 	mux.HandleFunc("/api/admin/libraries/scan", app.handleAdminScan)
+	mux.HandleFunc("/api/admin/libraries/scrape", app.handleAdminScrape)
 	mux.HandleFunc("/api/admin/users", app.handleAdminUsers)
 	mux.HandleFunc("/api/admin/settings", app.handleAdminSettings)
 	mux.HandleFunc("/api/admin/cache/clear", app.handleAdminCacheClear)

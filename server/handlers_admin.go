@@ -261,9 +261,13 @@ func (app *App) handleAdminLibraries(w http.ResponseWriter, r *http.Request) {
 		libCopy := *lib
 		app.store.mu.Unlock()
 
-		// Async scan right away
+		// Async scan + scrape right away
 		go func(id string) {
-			_, _ = ScanLibrary(app.store, id)
+			if _, err := ScanLibrary(app.store, id); err == nil {
+				if app.store.GetSettings().EnableScraper {
+					ScrapeLibrary(app.store, app.transcoder.thumbDir, id, false)
+				}
+			}
 		}(libCopy.ID)
 
 		okResp(w, libCopy)
@@ -301,6 +305,9 @@ func (app *App) handleAdminScan(w http.ResponseWriter, r *http.Request) {
 			errResp(w, 400, err.Error())
 			return
 		}
+		if app.store.GetSettings().EnableScraper {
+			go ScrapeLibrary(app.store, app.transcoder.thumbDir, id, false)
+		}
 		okResp(w, map[string]int{"scanned": cnt})
 		return
 	}
@@ -314,9 +321,26 @@ func (app *App) handleAdminScan(w http.ResponseWriter, r *http.Request) {
 	for _, lid := range ids {
 		if cnt, err := ScanLibrary(app.store, lid); err == nil {
 			total += cnt
+			if app.store.GetSettings().EnableScraper {
+				go ScrapeLibrary(app.store, app.transcoder.thumbDir, lid, false)
+			}
 		}
 	}
 	okResp(w, map[string]int{"scanned": total})
+}
+
+func (app *App) handleAdminScrape(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	id := r.URL.Query().Get("id")
+	force := r.URL.Query().Get("force") == "true"
+	if id == "" {
+		errResp(w, 400, "缺少媒体库 id")
+		return
+	}
+	go ScrapeLibrary(app.store, app.transcoder.thumbDir, id, force)
+	okResp(w, map[string]string{"status": "scraping_started"})
 }
 
 func (app *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {

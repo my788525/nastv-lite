@@ -214,6 +214,27 @@
       </div>
 
       <div class="card">
+        <div class="card-title">公开元数据自动刮削（仅对「影视剧模式」媒体库生效）</div>
+        <div class="switch-row">
+          <div>
+            <div style="font-weight:600;font-size:14px">启用自动刮削影片简介、年份、评分与高清海报</div>
+            <div style="font-size:12px;color:var(--muted)">填写 TMDB Key 后优先使用 TMDB 中文库；留空时自动使用免 Key 公开库 (iTunes / TVMaze)</div>
+          </div>
+          <input type="checkbox" id="setScraper">
+        </div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="form-group">
+            <label>TMDB API Key (v3 auth，可选)</label>
+            <input id="setTmdbKey" placeholder="留空则使用免Key公开库">
+          </div>
+          <div class="form-group">
+            <label>TMDB API 反代地址（可选，国内无法直连时填写）</label>
+            <input id="setTmdbMirror" placeholder="默认 https://api.themoviedb.org/3">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-title">转码引擎与 HLS 参数（弱网流畅播放核心）</div>
         <div class="switch-row">
           <div>
@@ -511,6 +532,7 @@ async function loadLibs() {
       <td>${l.item_count || 0}</td>
       <td class="row-actions">
         <button class="sec" onclick="scanLib('${l.id}')">扫描</button>
+        ${l.mode !== 'folder' ? `<button class="sec" onclick="scrapeLib('${l.id}')">✨ 刮削</button>` : ''}
         <button class="sec" onclick="editLib('${l.id}')">编辑</button>
         <button class="danger" onclick="delLib('${l.id}')">删除</button>
       </td>
@@ -548,6 +570,9 @@ async function loadSettings() {
   document.getElementById('setServerName').value = s.server_name || 'NASTV Lite';
   document.getElementById('setAutoScan').value = String(s.auto_scan_hours ?? 6);
   document.getElementById('setThumbs').checked = !!s.enable_thumbnails;
+  document.getElementById('setScraper').checked = s.enable_scraper !== false;
+  document.getElementById('setTmdbKey').value = s.tmdb_api_key || '';
+  document.getElementById('setTmdbMirror').value = s.tmdb_mirror || '';
   document.getElementById('setVAAPI').checked = !!s.enable_vaapi;
   document.getElementById('setPreset').value = s.transcode_preset || 'veryfast';
   document.getElementById('setHlsSeg').value = String(s.hls_segment_sec || 4);
@@ -558,6 +583,9 @@ async function saveSettings() {
     server_name: document.getElementById('setServerName').value.trim() || 'NASTV Lite',
     auto_scan_hours: parseInt(document.getElementById('setAutoScan').value, 10) || 0,
     enable_thumbnails: document.getElementById('setThumbs').checked,
+    enable_scraper: document.getElementById('setScraper').checked,
+    tmdb_api_key: document.getElementById('setTmdbKey').value.trim(),
+    tmdb_mirror: document.getElementById('setTmdbMirror').value.trim(),
     enable_vaapi: document.getElementById('setVAAPI').checked,
     transcode_preset: document.getElementById('setPreset').value,
     hls_segment_sec: parseInt(document.getElementById('setHlsSeg').value, 10) || 4,
@@ -642,6 +670,12 @@ async function scanLib(id) {
   const r = await api('/api/admin/libraries/scan?id=' + encodeURIComponent(id), { method: 'POST' });
   alert('扫描完成，共索引 ' + (r.data?.scanned || 0) + ' 个条目');
   initDashboard();
+}
+
+async function scrapeLib(id) {
+  const force = confirm('是否强制重新刮削已有封面的影片？\n点击“确定”强制全部重刮，点击“取消”仅补全缺失项。');
+  await api('/api/admin/libraries/scrape?id=' + encodeURIComponent(id) + '&force=' + (force ? 'true' : 'false'), { method: 'POST' });
+  alert('已启动后台自动刮削，稍后刷新即可看到海报与简介');
 }
 
 async function scanAll() {
