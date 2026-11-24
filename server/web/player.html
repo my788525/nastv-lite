@@ -294,14 +294,25 @@ async function loadNavTop() {
   const area = document.getElementById('contentArea');
   area.innerHTML = '<p style="color:var(--muted)">加载目录中...</p>';
   const r = await api('/v/api/v1/item/list', { method: 'POST', body: { parent_guid: top.guid, view_mode: top.mode, page_size: 500 } });
-  const items = (r.data && r.data.list) || [];
+  const rawItems = (r.data && r.data.list) || [];
+  const sortBy = getWebPref('nastv_sort_by', 'zh_name');
+  const sortOrder = getWebPref('nastv_sort_order', 'asc');
+  const items = sortBrowseItems(rawItems, sortBy, sortOrder);
   window._curListItems = items;
 
   const toggleBtnLabel = top.mode === 'folder' ? '🎬 切换海报墙模式' : '📁 切换文件夹模式';
   const breadcrumb = navStack.map(x => esc(x.title)).join(' / ');
   let html = `<div class="section-title">
     <span>${top.mode === 'folder' ? '📁' : '🎬'} ${breadcrumb} (${items.length})</span>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="webSortBy" onchange="onWebSortChange()">
+        <option value="zh_name" ${sortBy === 'zh_name' ? 'selected' : ''}>🔤 中文排序</option>
+        <option value="date" ${sortBy === 'date' ? 'selected' : ''}>🕒 创建日期</option>
+      </select>
+      <select id="webSortOrder" onchange="onWebSortChange()">
+        <option value="asc" ${sortOrder === 'asc' ? 'selected' : ''}>⬆ 正序</option>
+        <option value="desc" ${sortOrder === 'desc' ? 'selected' : ''}>⬇ 反序</option>
+      </select>
       <button onclick="toggleLibViewMode()">${toggleBtnLabel}</button>
       <button class="sec" onclick="navBack()">⬆ 返回上一级</button>
     </div>
@@ -534,6 +545,29 @@ function fmtSize(b) {
 }
 function esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escAttr(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
+function onWebSortChange() {
+  saveWebPref('nastv_sort_by', document.getElementById('webSortBy').value);
+  saveWebPref('nastv_sort_order', document.getElementById('webSortOrder').value);
+  loadNavTop();
+}
+
+function sortBrowseItems(list, sortBy, sortOrder) {
+  const arr = [...list];
+  const mul = sortOrder === 'desc' ? -1 : 1;
+  arr.sort((a, b) => {
+    const aDir = a.type === 'Directory' ? 0 : 1;
+    const bDir = b.type === 'Directory' ? 0 : 1;
+    if (aDir !== bDir) return aDir - bDir;
+    if (sortBy === 'date') {
+      const ta = a.update_time || 0;
+      const tb = b.update_time || 0;
+      if (ta !== tb) return (ta - tb) * mul;
+    }
+    return String(a.title || '').localeCompare(String(b.title || ''), 'zh-CN', { numeric: true, sensitivity: 'base' }) * mul;
+  });
+  return arr;
+}
 
 if (token) initApp();
 </script>
