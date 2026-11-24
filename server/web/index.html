@@ -291,7 +291,8 @@
       <label>NAS 目录路径（可点击下方浏览或手动输入，多个路径用逗号分隔）</label>
       <input id="libPaths" placeholder="/vol1/1000/MV">
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--muted)">当前：<span id="fsCurrent">/</span></span>
+        <span style="font-size:12px;color:var(--muted)">当前：<span id="fsCurrent">存储空间总览</span></span>
+        <button class="sec" style="padding:4px 8px;font-size:12px" onclick="browseFS('')">💾 存储空间</button>
         <button class="sec" style="padding:4px 8px;font-size:12px" onclick="browseFS(fsParent)">⬆ 上级</button>
         <button class="sec" style="padding:4px 8px;font-size:12px" onclick="selectCurrentDir()">✓ 选中此目录</button>
       </div>
@@ -576,7 +577,7 @@ function openLibModal() {
   document.getElementById('libName').value = '';
   document.getElementById('libMode').value = 'folder';
   document.getElementById('libPaths').value = '';
-  browseFS('/vol1');
+  browseFS('');
   openModal('libModal');
 }
 
@@ -593,15 +594,16 @@ function editLib(id) {
 }
 
 async function browseFS(path) {
-  const r = await api('/api/admin/fs?path=' + encodeURIComponent(path));
+  const p = path || '';
+  const r = await api('/api/admin/fs?path=' + encodeURIComponent(p));
   if (r.code !== 0) {
-    if (path !== '/') return browseFS('/');
+    if (p !== '') return browseFS('');
     return;
   }
   document.getElementById('fsCurrent').innerText = r.data.current;
-  fsParent = r.data.parent;
+  fsParent = r.data.parent || '';
   document.getElementById('dirList').innerHTML = (r.data.dirs || []).map(d => `
-    <div class="dir-item" onclick="browseFS('${d.path.replace(/'/g, "\\'")}')">
+    <div class="dir-item" onclick="browseFS('${d.path.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')">
       <span>📁 ${d.name}</span><span style="color:var(--muted)">进入 →</span>
     </div>
   `).join('') || '<div style="padding:12px;color:var(--muted);font-size:12px">无子目录</div>';
@@ -609,6 +611,10 @@ async function browseFS(path) {
 
 function selectCurrentDir() {
   const cur = document.getElementById('fsCurrent').innerText;
+  if (!cur || cur === '存储空间总览' || cur === '盘符总览') {
+    alert('请先点击进入一个具体的存储空间或文件夹');
+    return;
+  }
   const inp = document.getElementById('libPaths');
   const existing = inp.value.split(',').map(s => s.trim()).filter(Boolean);
   if (!existing.includes(cur)) existing.push(cur);

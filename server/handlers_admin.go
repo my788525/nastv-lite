@@ -96,26 +96,57 @@ func (app *App) handleAdminFS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dir := r.URL.Query().Get("path")
-	if dir == "" {
-		dir = "/"
-	}
-	if runtime.GOOS == "windows" && (dir == "/" || dir == "\\") {
-		var drives []map[string]string
-		for c := 'C'; c <= 'Z'; c++ {
-			root := string(c) + `:\`
-			if _, err := os.Stat(root); err == nil {
-				drives = append(drives, map[string]string{
-					"name": "本地磁盘 (" + string(c) + ":)",
-					"path": root,
-				})
+	if runtime.GOOS == "windows" {
+		if dir == "" || dir == "/" || dir == "\\" {
+			var drives []map[string]string
+			for c := 'C'; c <= 'Z'; c++ {
+				root := string(c) + `:\`
+				if _, err := os.Stat(root); err == nil {
+					drives = append(drives, map[string]string{
+						"name": "💾 本地磁盘 (" + string(c) + ":)",
+						"path": root,
+					})
+				}
 			}
+			okResp(w, map[string]interface{}{
+				"current": "盘符总览",
+				"parent":  "",
+				"dirs":    drives,
+			})
+			return
 		}
-		okResp(w, map[string]interface{}{
-			"current": "/",
-			"parent":  "/",
-			"dirs":    drives,
-		})
-		return
+	} else {
+		// Linux / fnOS: empty path shows all storage volumes (/vol1, /vol2, /vol3...) + /mnt + /
+		if dir == "" {
+			var vols []map[string]string
+			if rootEntries, err := os.ReadDir("/"); err == nil {
+				for _, e := range rootEntries {
+					if !e.IsDir() {
+						continue
+					}
+					n := e.Name()
+					if strings.HasPrefix(n, "vol") && n != "vol00" {
+						vols = append(vols, map[string]string{
+							"name": "💾 存储空间 (" + "/" + n + ")",
+							"path": "/" + n,
+						})
+					}
+				}
+			}
+			sort.Slice(vols, func(i, j int) bool {
+				return vols[i]["path"] < vols[j]["path"]
+			})
+			if _, err := os.Stat("/mnt"); err == nil {
+				vols = append(vols, map[string]string{"name": "🔌 外接/挂载目录 (/mnt)", "path": "/mnt"})
+			}
+			vols = append(vols, map[string]string{"name": "🖥️ 系统根目录 (/)", "path": "/"})
+			okResp(w, map[string]interface{}{
+				"current": "存储空间总览",
+				"parent":  "",
+				"dirs":    vols,
+			})
+			return
+		}
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -124,20 +155,30 @@ func (app *App) handleAdminFS(w http.ResponseWriter, r *http.Request) {
 	}
 	var dirs []map[string]string
 	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+		name := e.Name()
+		if !e.IsDir() || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "@app") || name == "appcenter-downloads" {
 			continue
 		}
 		dirs = append(dirs, map[string]string{
-			"name": e.Name(),
-			"path": filepath.Join(dir, e.Name()),
+			"name": name,
+			"path": filepath.Join(dir, name),
 		})
 	}
 	sort.Slice(dirs, func(i, j int) bool {
 		return dirs[i]["name"] < dirs[j]["name"]
 	})
 	parent := filepath.Dir(dir)
-	if runtime.GOOS == "windows" && parent == dir {
-		parent = "/"
+	if runtime.GOOS == "windows" {
+		if parent == dir {
+			parent = ""
+		}
+	} else {
+		// From /vol1, /vol2, /vol3 or /, going up returns to Storage Volumes overview
+		if parent == "/" && strings.HasPrefix(filepath.Base(dir), "vol") {
+			parent = ""
+		} else if dir == "/" {
+			parent = ""
+		}
 	}
 	okResp(w, map[string]interface{}{
 		"current": dir,
