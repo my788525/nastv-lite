@@ -237,6 +237,9 @@ func ScrapeLibrary(s *Store, thumbDir, libID string, force bool) int {
 	}
 	cfg := s.GetSettings()
 	_ = os.MkdirAll(thumbDir, 0755)
+	if lib.Mode == ModeMusic {
+		return ScrapeMusicLibrary(s, thumbDir, "ffprobe", "ffmpeg", libID, force)
+	}
 
 	s.mu.RLock()
 	var targets []*MediaItem

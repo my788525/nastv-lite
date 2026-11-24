@@ -182,8 +182,17 @@ func (t *Transcoder) EnsureThumbnail(item *MediaItem, enabled bool) string {
 					return audThumb
 				}
 			}
-			_ = os.WriteFile(noMarker, []byte("0"), 0644)
 		}
+		// Fallback: public iTunes album cover art on NAS server
+		qTitle, qArtist := parseTrackTitleArtist(item.Title, item.RelPath)
+		if item.Artist != "" {
+			qArtist = item.Artist
+		}
+		_, _, _, artURL := scrapeITunesMusic(qTitle, qArtist)
+		if artURL != "" && downloadPosterToCache(artURL, audThumb) {
+			return audThumb
+		}
+		_ = os.WriteFile(noMarker, []byte("0"), 0644)
 		return ""
 	}
 	if !enabled || t.ffmpegPath == "" || item.FilePath == "" || item.Type == "Directory" || item.Type == "TV" {

@@ -61,6 +61,7 @@ type MediaItem struct {
 	TvTitle       string         `json:"tv_title,omitempty"`
 	Artist        string         `json:"artist,omitempty"`
 	Album         string         `json:"album,omitempty"`
+	Lyrics        string         `json:"lyrics,omitempty"`
 	Type          string         `json:"type"` // "Directory", "Video", "Audio", "Movie", "TV", "Episode"
 	Category      string         `json:"category,omitempty"`
 	FilePath      string         `json:"file_path"`

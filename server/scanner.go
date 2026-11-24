@@ -183,7 +183,7 @@ func ScanLibrary(s *Store, libID string) (int, error) {
 		}
 	}
 
-	// Preserve cached probe metadata (duration/codec) for unchanged files
+	// Preserve cached probe & scraped metadata for unchanged files
 	s.mu.Lock()
 	for guid, item := range newItems {
 		if old, exists := s.data.Items[guid]; exists && old.FileSize == item.FileSize && old.ModTime == item.ModTime {
@@ -194,6 +194,18 @@ func ScanLibrary(s *Store, libID string) (int, error) {
 				item.VCodec = old.VCodec
 				item.ACodec = old.ACodec
 				item.Bitrate = old.Bitrate
+			}
+			if item.Artist == "" && old.Artist != "" {
+				item.Artist = old.Artist
+			}
+			if item.Album == "" && old.Album != "" {
+				item.Album = old.Album
+			}
+			if item.Lyrics == "" && old.Lyrics != "" {
+				item.Lyrics = old.Lyrics
+			}
+			if item.PosterPath == "" && old.PosterPath != "" {
+				item.PosterPath = old.PosterPath
 			}
 		}
 	}

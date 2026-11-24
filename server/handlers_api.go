@@ -697,8 +697,39 @@ func (app *App) handleAudioLyrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Cache artist/album/duration in memory if newly discovered
-	if artist != "" || album != "" || duration > 0 {
+	// 2.5 Fallback to cached scraped lyrics on NAS
+	if lrc == "" && it.Lyrics != "" {
+		lrc = it.Lyrics
+	}
+
+	// 3. On-demand server-side open-source music scraping (LrcLib) when missing
+	scrapedNew := false
+	if lrc == "" && app.store.GetSettings().EnableScraper {
+		qTitle, qArtist := parseTrackTitleArtist(title, it.RelPath)
+		if artist != "" {
+			qArtist = artist
+		}
+		sLrc, _, sArtist, sAlbum, sDur := scrapeLrcLib(qTitle, qArtist)
+		if sLrc != "" {
+			lrc = sLrc
+			scrapedNew = true
+		}
+		if artist == "" && sArtist != "" {
+			artist = sArtist
+			scrapedNew = true
+		}
+		if album == "" && sAlbum != "" {
+			album = sAlbum
+			scrapedNew = true
+		}
+		if duration <= 0 && sDur > 0 {
+			duration = sDur
+			scrapedNew = true
+		}
+	}
+
+	// Cache artist/album/duration/lyrics in memory (and persist if newly scraped)
+	if artist != "" || album != "" || duration > 0 || lrc != "" {
 		app.store.mu.Lock()
 		if cur, exists := app.store.data.Items[guid]; exists {
 			if cur.Artist == "" && artist != "" {
@@ -710,8 +741,14 @@ func (app *App) handleAudioLyrics(w http.ResponseWriter, r *http.Request) {
 			if cur.Duration <= 0 && duration > 0 {
 				cur.Duration = duration
 			}
+			if cur.Lyrics == "" && lrc != "" {
+				cur.Lyrics = lrc
+			}
 		}
 		app.store.mu.Unlock()
+		if scrapedNew {
+			go func() { _ = app.store.Save() }()
+		}
 	}
 
 	okResp(w, map[string]interface{}{
