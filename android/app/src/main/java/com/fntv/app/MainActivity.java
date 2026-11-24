@@ -50,7 +50,7 @@ public class MainActivity extends AppCompatActivity {
     public void onConfigurationChanged(android.content.res.Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         // 车机在 主屏/副驾屏/分屏 之间移动时，重新适配目标屏方向
-        OrientationHelper.lockToCurrentDisplay(this);
+        OrientationHelper.adaptOrientation(this);
     }
 
     @Override
@@ -59,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         // 比亚迪车机：启动即适配当前屏横竖屏状态，不触发系统旋转
-        OrientationHelper.lockToCurrentDisplay(this);
+        OrientationHelper.adaptOrientation(this);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(Color.TRANSPARENT);

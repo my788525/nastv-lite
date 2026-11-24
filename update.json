@@ -1,17 +1,17 @@
 {
   "server": {
-    "versionCode": 9,
-    "versionName": "1.0.8",
-    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.8/nastv-server-linux-amd64",
-    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.8/nastv-server-windows-amd64.exe",
-    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.8/nastv-lite-x86_64-v1.0.8.fpk",
-    "changelog": "NASTV Lite 服务端 v1.0.8：\n1. Web 网页端播放器 (`/play`) 媒体库浏览新增排序方式（中文拼音排序 / 创建日期）与排序顺序（正序 / 反序）选择器，并自动记住用户选择。"
+    "versionCode": 10,
+    "versionName": "1.0.9",
+    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.9/nastv-server-linux-amd64",
+    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.9/nastv-server-windows-amd64.exe",
+    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.9/nastv-lite-x86_64-v1.0.9.fpk",
+    "changelog": "NASTV Lite 服务端 v1.0.9：\n1. Web 网页端播放器 (`/play`) 全面适配手机竖屏：双列海报网格、文件夹列表换行布局、顶部搜索栏及播放器控件自适应窄屏。"
   },
   "android": {
-    "versionCode": 4,
-    "versionName": "1.0.7",
-    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.7/NASTV_Lite_v1.0.7.apk",
-    "changelog": "NASTV Lite 客户端 v1.0.7（兼容 Android 4.4+）：\n1. 持久化记住每个媒体库的浏览模式偏好（文件夹模式 / 海报墙模式），下次进入直接按上次习惯展示，所有播放与弱网设置均持久化保存。",
+    "versionCode": 5,
+    "versionName": "1.0.9",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.9/NASTV_Lite_v1.0.9.apk",
+    "changelog": "NASTV Lite 客户端 v1.0.9（兼容 Android 4.4+）：\n1. 智能横竖屏自适应：手机端自动随系统感知横竖屏切换并实时重排；比亚迪 DiLink 车机与电视端保持锁定当前屏幕方向，开 App 绝不触发车机自动旋转。\n2. 手机竖屏 UI 适配：媒体库工具栏支持横向滑动，窄屏下所有排序/切换按钮完整可点。",
     "forceUpdate": false
   }
 }

@@ -21,6 +21,26 @@ public final class OrientationHelper {
 
     private OrientationHelper() {}
 
+    /**
+     * 智能横竖屏适配：
+     * - 车机 / TV：仅锁定到当前屏幕方向，绝不主动旋转车机大屏影响驾驶体验；
+     * - 普通手机 / 平板：使用 SCREEN_ORIENTATION_USER，自动感知系统横竖屏旋转并自适应布局。
+     */
+    public static void adaptOrientation(Activity a) {
+        if (a == null) return;
+        if (isCarDevice(a) || isTvDevice(a)) {
+            lockToCurrentDisplay(a);
+        } else {
+            a.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER);
+        }
+    }
+
+    public static boolean isTvDevice(Context c) {
+        if (c == null) return false;
+        UiModeManager um = (UiModeManager) c.getSystemService(Context.UI_MODE_SERVICE);
+        return um != null && um.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION;
+    }
+
     /** 锁定到“当前所在屏幕”的横竖屏状态（读取当前 Configuration.orientation）。 */
     public static void lockToCurrentDisplay(Activity a) {
         if (a == null) return;
@@ -39,9 +59,15 @@ public final class OrientationHelper {
                 : ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
 
-    /** 是否为车机（Android Automotive 或 car UI mode）。 */
+    /** 是否为车机（Android Automotive、car UI mode 或比亚迪 DiLink）。 */
     public static boolean isCarDevice(Context c) {
         if (c == null) return false;
+        String mfg = android.os.Build.MANUFACTURER != null ? android.os.Build.MANUFACTURER.toLowerCase() : "";
+        String brd = android.os.Build.BRAND != null ? android.os.Build.BRAND.toLowerCase() : "";
+        String mdl = android.os.Build.MODEL != null ? android.os.Build.MODEL.toLowerCase() : "";
+        if (mfg.contains("byd") || brd.contains("byd") || mdl.contains("dilink") || mdl.contains("byd")) {
+            return true;
+        }
         UiModeManager um = (UiModeManager) c.getSystemService(Context.UI_MODE_SERVICE);
         if (um != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH
                 && um.getCurrentModeType() == Configuration.UI_MODE_TYPE_CAR) {

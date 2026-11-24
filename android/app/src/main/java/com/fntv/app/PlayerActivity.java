@@ -555,7 +555,7 @@ public class PlayerActivity extends AppCompatActivity {
         showCtrl(true);
         loadPlayInfo();
         // 比亚迪车机：播放器启动即适配当前屏横竖屏状态，不强制横屏/竖屏
-        OrientationHelper.lockToCurrentDisplay(this);
+        OrientationHelper.adaptOrientation(this);
         applyFullscreenMode();
 
         // 控制栏隐藏时的进度时间浮层
@@ -2308,13 +2308,13 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void restoreOrientation() {
         // 退出/暂停播放时，回到车机“当前屏”的横竖屏状态，绝不强制竖屏
-        OrientationHelper.lockToCurrentDisplay(this);
+        OrientationHelper.adaptOrientation(this);
     }
 
     @Override public void onConfigurationChanged(android.content.res.Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         // 车机在 主屏/副驾屏/分屏 之间移动时，重新适配目标屏方向
-        OrientationHelper.lockToCurrentDisplay(this);
+        OrientationHelper.adaptOrientation(this);
     }
 
     @Override protected void onPause() {

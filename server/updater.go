@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	ServerVersionCode = 9
-	ServerVersionName = "1.0.8"
+	ServerVersionCode = 10
+	ServerVersionName = "1.0.9"
 	UpdateManifestURL = "https://raw.githubusercontent.com/my788525/nastv-lite/main/update.json"
 )
 

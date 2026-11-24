@@ -43,6 +43,20 @@
   .form-group input { width: 100%; }
   .badge { font-size: 11px; padding: 2px 7px; border-radius: 99px; background: rgba(56,189,248,.15); color: var(--accent); }
   .hidden { display: none !important; }
+  @media (max-width: 680px) {
+    .topbar { padding: 10px 12px; gap: 8px; }
+    .brand { font-size: 16px; }
+    .search-box { width: 100%; }
+    .search-box input { flex: 1; min-width: 0; }
+    .main { padding: 12px 10px; }
+    .cards { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .section-title { flex-wrap: wrap; font-size: 15px; }
+    .list-row { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    .list-left { flex: 1 1 100%; }
+    video { max-height: 45vh; }
+    .player-bar { padding: 10px 12px; }
+    .login-box { margin: 40px 14px; }
+  }
 </style>
 </head>
 <body>

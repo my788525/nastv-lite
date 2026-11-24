@@ -159,7 +159,7 @@ public class HomeActivity extends AppCompatActivity {
     public void onConfigurationChanged(android.content.res.Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         // 车机在 主屏/副驾屏/分屏 之间移动时，重新适配目标屏方向
-        OrientationHelper.lockToCurrentDisplay(this);
+        OrientationHelper.adaptOrientation(this);
         if (savedDetailItem != null) {
             buildDetailPage(savedDetailItem, savedDetailInfo);
         } else if (savedBrowseList != null) {
@@ -185,7 +185,7 @@ public class HomeActivity extends AppCompatActivity {
         setContentView(R.layout.activity_home);
 
         // 比亚迪车机：启动即适配当前屏横竖屏状态，不触发系统旋转
-        OrientationHelper.lockToCurrentDisplay(this);
+        OrientationHelper.adaptOrientation(this);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(Color.TRANSPARENT);
@@ -1457,7 +1457,19 @@ public class HomeActivity extends AppCompatActivity {
             playAllBtn.setNextFocusLeftId(viewToggle.getId());
         }
 
-        return bar;
+        // 手机竖屏自适应：外层包一层 HorizontalScrollView 保证窄屏下所有按钮不被裁切
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        HorizontalScrollView hsv = new HorizontalScrollView(this);
+        hsv.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        hsv.setHorizontalScrollBarEnabled(false);
+        hsv.setFillViewport(true);
+        hsv.addView(bar);
+        wrapper.addView(hsv);
+        return wrapper;
     }
 
     private void toggleViewMode() {
