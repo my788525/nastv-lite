@@ -52,6 +52,7 @@ type SubtitleInfo struct {
 type MediaItem struct {
 	Guid          string         `json:"guid"`
 	LibID         string         `json:"lib_id"`
+	ViewMode      string         `json:"view_mode,omitempty"` // "folder" or "movie_tv"
 	ParentGuid    string         `json:"parent_guid"`
 	Title         string         `json:"title"`
 	OriginalTitle string         `json:"original_title,omitempty"`

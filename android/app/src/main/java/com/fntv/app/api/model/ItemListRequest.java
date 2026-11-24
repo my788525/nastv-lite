@@ -41,6 +41,9 @@ public class ItemListRequest {
     @SerializedName("page")
     public Integer page;
 
+    @SerializedName("view_mode")
+    public String viewMode;
+
     /** 类型标签 */
     public static class Tags {
         public List<String> type;

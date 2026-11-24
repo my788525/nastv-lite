@@ -81,6 +81,7 @@ public class HomeActivity extends AppCompatActivity {
             tvMenuPanelValue, tvDpadAccelValue, tvSleepTimerValue, tvVocalBoostValue,
             tvDefaultQualityValue, tvBufferProfileValue, tvWeakNetRetryValue;
     private boolean hasAutoResumedOnStartup = false;
+    private final Map<String, String> libModeOverrides = new HashMap<>();
 
     public static class FolderNavState {
         public String guid;
@@ -1141,6 +1142,9 @@ public class HomeActivity extends AppCompatActivity {
         ItemListRequest request = useParent
                 ? ItemListRequest.browseFolderByParent(ancestorGuid)
                 : new ItemListRequest(ancestorGuid, BROWSE_TYPES, !isFolderHierarchyMode(), sortColumn, sortType, 100);
+        if (!useParent && ancestorGuid != null) {
+            request.viewMode = getEffectiveLibMode(ancestorGuid);
+        }
         Log.d("Overview", "browseItems: guid=" + ancestorGuid + " useParent=" + useParent);
         Callback<ApiResponse<ItemListResponse>> browseCb = new Callback<ApiResponse<ItemListResponse>>() {
             @Override
@@ -1416,6 +1420,27 @@ public class HomeActivity extends AppCompatActivity {
         });
         playAllBtn.setOnClickListener(v -> playAllCurrentFolder());
         bar.addView(playAllBtn);
+
+        // 服务端双模一键切换：文件夹模式 <-> 海报墙模式
+        String rootLibId = getCurrentRootLibId();
+        if (rootLibId != null) {
+            View sp5 = new View(this);
+            sp5.setLayoutParams(new LinearLayout.LayoutParams(12, 1));
+            bar.addView(sp5);
+
+            String curMode = getEffectiveLibMode(rootLibId);
+            Button libModeBtn = new Button(this);
+            libModeBtn.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, (int)(38 * getResources().getDisplayMetrics().density)));
+            libModeBtn.setBackgroundResource(R.drawable.bg_btn_primary);
+            libModeBtn.setText("folder".equals(curMode) ? "🎬 海报墙模式" : "📁 文件夹模式");
+            libModeBtn.setTextColor(0xFF38BDF8);
+            libModeBtn.setTextSize(12);
+            libModeBtn.setFocusable(true);
+            libModeBtn.setPadding(16, 0, 16, 0);
+            libModeBtn.setOnClickListener(v -> toggleCurrentLibMode(rootLibId));
+            bar.addView(libModeBtn);
+        }
 
         // 遥控器水平焦点链：保证左右导航在各按钮间丝滑连贯切换
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
@@ -1811,6 +1836,53 @@ public class HomeActivity extends AppCompatActivity {
     }
 
     /** 判断顶层媒体库是否为“文件夹型”（文件夹型展示内部子文件夹，内容型隐藏） */
+    private String getCurrentRootLibId() {
+        if (folderNavStack != null && !folderNavStack.isEmpty()) {
+            String g = folderNavStack.get(0).guid;
+            for (MediaDbItem l : mediaLibraries) {
+                if (l.guid != null && l.guid.equals(g)) return g;
+            }
+        }
+        if (currentBrowseGuid != null) {
+            for (MediaDbItem l : mediaLibraries) {
+                if (l.guid != null && l.guid.equals(currentBrowseGuid)) return currentBrowseGuid;
+            }
+        }
+        return null;
+    }
+
+    private String getEffectiveLibMode(String libGuid) {
+        if (libGuid == null) return "movie_tv";
+        if (libModeOverrides.containsKey(libGuid)) {
+            return libModeOverrides.get(libGuid);
+        }
+        for (MediaDbItem l : mediaLibraries) {
+            if (l.guid != null && l.guid.equals(libGuid)) {
+                return "folder".equalsIgnoreCase(l.mode) ? "folder" : "movie_tv";
+            }
+        }
+        return "movie_tv";
+    }
+
+    private void toggleCurrentLibMode(String libGuid) {
+        String cur = getEffectiveLibMode(libGuid);
+        String next = "folder".equals(cur) ? "movie_tv" : "folder";
+        libModeOverrides.put(libGuid, next);
+        prefs.edit().putString(PREF_VIEW_MODE, "folder".equals(next) ? "list" : "grid").apply();
+        folderNavStack.clear();
+        String title = currentBrowseTitle;
+        for (MediaDbItem l : mediaLibraries) {
+            if (l.guid != null && l.guid.equals(libGuid)) {
+                title = l.title;
+                break;
+            }
+        }
+        browseItemsInContainer(libGuid, title,
+                currentBrowseContainer != null ? currentBrowseContainer : libraryContainer,
+                currentBrowseLoading != null ? currentBrowseLoading : tvLibraryLoading,
+                null, "folder".equals(next));
+    }
+
     private boolean isLibFolderForm(MediaDbItem lib) {
         if (lib == null) return false;
         if ("folder".equalsIgnoreCase(lib.mode)) return true;

@@ -234,12 +234,21 @@ function renderLibs() {
 
 async function openLibrary(libGuid) {
   const lib = libs.find(x => x.guid === libGuid);
-  navStack = [{ guid: libGuid, title: lib ? lib.title : '媒体库', mode: lib ? lib.mode : 'movie_tv' }];
+  navStack = [{ guid: libGuid, libGuid: libGuid, title: lib ? lib.title : '媒体库', mode: lib ? lib.mode : 'movie_tv' }];
+  await loadNavTop();
+}
+
+async function toggleLibViewMode() {
+  if (!navStack.length) return;
+  const root = navStack[0];
+  const nextMode = root.mode === 'folder' ? 'movie_tv' : 'folder';
+  navStack = [{ guid: root.libGuid, libGuid: root.libGuid, title: root.title, mode: nextMode }];
   await loadNavTop();
 }
 
 async function enterFolder(guid, title, mode) {
-  navStack.push({ guid, title, mode });
+  const libGuid = navStack.length ? navStack[0].libGuid : guid;
+  navStack.push({ guid, libGuid, title, mode });
   await loadNavTop();
 }
 
@@ -253,13 +262,15 @@ async function loadNavTop() {
   const top = navStack[navStack.length - 1];
   const area = document.getElementById('contentArea');
   area.innerHTML = '<p style="color:var(--muted)">加载目录中...</p>';
-  const r = await api('/v/api/v1/item/list', { method: 'POST', body: { parent_guid: top.guid, page_size: 500 } });
+  const r = await api('/v/api/v1/item/list', { method: 'POST', body: { parent_guid: top.guid, view_mode: top.mode, page_size: 500 } });
   const items = (r.data && r.data.list) || [];
   window._curListItems = items;
 
+  const toggleBtnLabel = top.mode === 'folder' ? '🎬 切换海报墙模式' : '📁 切换文件夹模式';
   let html = `<div class="section-title">
     <span>${top.mode === 'folder' ? '📁' : '🎬'} ${esc(top.title)} (${items.length})</span>
     <div style="display:flex;gap:8px">
+      <button onclick="toggleLibViewMode()">${toggleBtnLabel}</button>
       <button class="sec" onclick="navBack()">⬆ 返回上一级</button>
     </div>
   </div>`;

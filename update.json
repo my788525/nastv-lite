@@ -1,17 +1,17 @@
 {
   "server": {
-    "versionCode": 5,
-    "versionName": "1.0.4",
-    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.4/nastv-server-linux-amd64",
-    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.4/nastv-server-windows-amd64.exe",
-    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.4/nastv-lite-x86_64-v1.0.4.fpk",
-    "changelog": "NASTV Lite 服务端 v1.0.4：\n1. 优化影视剧扫描识别：当视频文件名为 1080P/4K/BluRay/国语 等通用画质标签时，自动向上提取所属电影文件夹名称及 movie.nfo 标题，不再显示一堆“1080P”。\n2. 优化剧集数字命名识别：支持将子目录下的 01/02/03 等纯数字视频自动聚合成剧集。"
+    "versionCode": 6,
+    "versionName": "1.0.5",
+    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.5/nastv-server-linux-amd64",
+    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.5/nastv-server-windows-amd64.exe",
+    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.5/nastv-lite-x86_64-v1.0.5.fpk",
+    "changelog": "NASTV Lite 服务端 v1.0.5：\n1. 新增公开库自动刮削功能：支持 TMDB（含反代配置）及免 Key 公开库（iTunes 中文电影 + TVMaze 剧集），自动获取片名、简介、年份、评分与高清海报。\n2. 全媒体库双模同时索引：服务端同时支持按「纯文件夹」和「海报墙」两种方式返回，服务端设置仅作默认模式，由客户端一键自由切换。"
   },
   "android": {
-    "versionCode": 2,
-    "versionName": "1.0.2",
-    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.2/NASTV_Lite_v1.0.2.apk",
-    "changelog": "NASTV Lite 客户端 v1.0.2（兼容 Android 4.4+）：\n1. 新增「文件」标签页（远程文件浏览模式）：直接浏览 NAS 上任意目录与文件（APK、文档、音视频、压缩包等），支持带进度条拉取下载，APK 下载完一键唤起安装。\n2. 全面兼容 Android 4.4 (API 19+) 车机与老旧电视盒子。\n3. 持续优化 IPv4/IPv6 双栈直连与弱网缓冲容错。",
+    "versionCode": 3,
+    "versionName": "1.0.5",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.5/NASTV_Lite_v1.0.5.apk",
+    "changelog": "NASTV Lite 客户端 v1.0.5（兼容 Android 4.4+）：\n1. 媒体库内新增「📁 文件夹模式 / 🎬 海报墙模式」一键切换按钮，随时按个人习惯自由切换浏览方式。\n2. 配合服务端 v1.0.5 支持公开库刮削海报与简介展示。",
     "forceUpdate": false
   }
 }

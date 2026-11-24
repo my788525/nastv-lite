@@ -178,6 +178,7 @@ func (app *App) handleItemList(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ParentGuid string   `json:"parent_guid"`
 		Ancestor   string   `json:"ancestor_guid"`
+		ViewMode   string   `json:"view_mode"` // optional: "folder" or "movie_tv"
 		Types      []string `json:"types"`
 		PageSize   int      `json:"page_size"`
 	}
@@ -190,6 +191,7 @@ func (app *App) handleItemList(w http.ResponseWriter, r *http.Request) {
 	// Determine if targetParent is a library ID or a folder/show GUID
 	var list []PlayListItemDTO
 	app.store.mu.RLock()
+	_, isLibRoot := app.store.data.Libraries[targetParent]
 	for _, it := range app.store.data.Items {
 		if !u.CanAccessLibrary(it.LibID) {
 			continue
@@ -201,7 +203,14 @@ func (app *App) handleItemList(w http.ResponseWriter, r *http.Request) {
 		if lib, ok := app.store.data.Libraries[it.LibID]; ok {
 			libMode = lib.Mode
 		}
-		list = append(list, app.toItemDTO(u.ID, it, libMode))
+		effMode := libMode
+		if req.ViewMode == ModeFolder || req.ViewMode == ModeMovieTV {
+			effMode = req.ViewMode
+		}
+		if isLibRoot && it.ViewMode != "" && it.ViewMode != effMode {
+			continue
+		}
+		list = append(list, app.toItemDTO(u.ID, it, effMode))
 	}
 	app.store.mu.RUnlock()
 
@@ -542,11 +551,14 @@ func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 		if !u.CanAccessLibrary(it.LibID) {
 			continue
 		}
+		mode := ModeMovieTV
+		if lib, ok := app.store.data.Libraries[it.LibID]; ok {
+			mode = lib.Mode
+		}
+		if it.ViewMode != "" && it.ViewMode != mode {
+			continue
+		}
 		if strings.Contains(strings.ToLower(it.Title), q) || strings.Contains(strings.ToLower(it.TvTitle), q) {
-			mode := ModeMovieTV
-			if lib, ok := app.store.data.Libraries[it.LibID]; ok {
-				mode = lib.Mode
-			}
 			res = append(res, app.toItemDTO(u.ID, it, mode))
 			if len(res) >= 100 {
 				break

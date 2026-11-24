@@ -232,7 +232,7 @@ func downloadPosterToCache(posterURL, destPath string) bool {
 
 func ScrapeLibrary(s *Store, thumbDir, libID string, force bool) int {
 	lib, ok := s.GetLibrary(libID)
-	if !ok || lib.Mode == ModeFolder {
+	if !ok {
 		return 0
 	}
 	cfg := s.GetSettings()

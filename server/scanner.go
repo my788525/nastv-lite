@@ -160,14 +160,26 @@ func ScanLibrary(s *Store, libID string) (int, error) {
 		return 0, os.ErrNotExist
 	}
 
-	newItems := make(map[string]*MediaItem)
-	if lib.Mode == ModeFolder {
-		for _, rootPath := range lib.Paths {
-			scanFolderMode(lib, rootPath, rootPath, lib.ID, newItems)
+	folderItems := make(map[string]*MediaItem)
+	movieItems := make(map[string]*MediaItem)
+	for _, rootPath := range lib.Paths {
+		scanFolderMode(lib, rootPath, rootPath, lib.ID, folderItems)
+		scanMovieTVMode(lib, rootPath, movieItems)
+	}
+	newItems := make(map[string]*MediaItem, len(folderItems)+len(movieItems))
+	defaultCount := 0
+	for k, v := range folderItems {
+		v.ViewMode = ModeFolder
+		newItems[k] = v
+		if lib.Mode == ModeFolder {
+			defaultCount++
 		}
-	} else {
-		for _, rootPath := range lib.Paths {
-			scanMovieTVMode(lib, rootPath, newItems)
+	}
+	for k, v := range movieItems {
+		v.ViewMode = ModeMovieTV
+		newItems[k] = v
+		if lib.Mode != ModeFolder {
+			defaultCount++
 		}
 	}
 
@@ -196,7 +208,7 @@ func ScanLibrary(s *Store, libID string) (int, error) {
 	}
 	if l, exists := s.data.Libraries[libID]; exists {
 		l.LastScan = time.Now().Unix()
-		l.ItemCount = len(newItems)
+		l.ItemCount = defaultCount
 	}
 	_ = s.saveLocked()
 	s.mu.Unlock()
