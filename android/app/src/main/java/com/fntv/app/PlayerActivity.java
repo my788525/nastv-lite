@@ -1342,7 +1342,7 @@ public class PlayerActivity extends AppCompatActivity {
             }
             return false;
         }
-        return !streamVColor.isEmpty() && (streamVColor.contains("bt2020") || streamVColor.contains("2020"));
+        return streamVColor != null && !streamVColor.isEmpty() && (streamVColor.contains("bt2020") || streamVColor.contains("2020"));
     }
 
     /** 调节屏幕亮度（仅当前 Activity），val 0~200，100=系统默认 */
@@ -1721,14 +1721,14 @@ public class PlayerActivity extends AppCompatActivity {
         // 视频（左列）
         StringBuilder v = new StringBuilder();
         v.append("── 视频 ──\n");
-        String codec = FormatUtils.fmtVideoCodec(streamVCodec.isEmpty() ? (vf != null ? vf.codecs : null) : streamVCodec);
+        String codec = FormatUtils.fmtVideoCodec((streamVCodec == null || streamVCodec.isEmpty()) ? (vf != null ? vf.codecs : null) : streamVCodec);
         v.append("编码 ").append(codec).append("\n");
         // 优先用 ExoPlayer 实际解码的格式（切换画质后自动更新）
         int w = vf != null && vf.width > 0 ? vf.width : streamVWidth;
         int h = vf != null && vf.height > 0 ? vf.height : streamVHeight;
         if (w > 0 && h > 0) v.append("分辨率 ").append(w).append("×").append(h).append("\n");
         float fps = 0;
-        if (!streamVFps.isEmpty()) { try { fps = Float.parseFloat(streamVFps.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {} }
+        if (streamVFps != null && !streamVFps.isEmpty()) { try { fps = Float.parseFloat(streamVFps.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {} }
         if (fps <= 0 && vf != null) fps = vf.frameRate;
         if (fps > 0) v.append("帧率 ").append(String.format("%.3f fps", fps)).append("\n");
         if (vf != null && vf.bitrate > 0) v.append("码率 ").append(FormatUtils.formatBitrate(vf.bitrate)).append("\n");

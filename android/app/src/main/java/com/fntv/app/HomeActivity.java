@@ -1105,6 +1105,8 @@ public class HomeActivity extends AppCompatActivity {
                     currentBrowseContainer, currentBrowseLoading,
                     (item.singleChildGuid != null && !item.singleChildGuid.isEmpty()) ? item.singleChildGuid : null,
                     true);
+        } else if (item != null && "Audio".equalsIgnoreCase(item.type)) {
+            launchPlayer(item.guid, item.getDisplayTitle(), "", 0, item.poster, "Audio", 0, item.duration, item.parentGuid);
         } else {
             showDetail(item);  // 可播放项走 getPlayInfo
         }
@@ -2457,6 +2459,10 @@ public class HomeActivity extends AppCompatActivity {
 
 
     private void showDetail(PlayListItem item) {
+        if (item != null && "Audio".equalsIgnoreCase(item.type)) {
+            launchPlayer(item.guid, item.getDisplayTitle(), "", 0, item.poster, "Audio", 0, item.duration, item.parentGuid);
+            return;
+        }
         switchTab(0);
         detailInLibrary = false;
         detailContainer = moviesContainer;
