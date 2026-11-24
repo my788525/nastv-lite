@@ -505,6 +505,7 @@ public class MainActivity extends AppCompatActivity {
         if (rem) e.putString("fnid_pass", pass);
         else e.remove("fnid_pass");
         e.putString("host", domain);
+        e.putString("auth_token", token);
         e.putString("login_mode", "fnid");
         e.putBoolean("_was_fnid", true);
         e.apply();
@@ -536,7 +537,9 @@ public class MainActivity extends AppCompatActivity {
             public void onResponse(Call<ApiResponse<LoginResponseData>> call, Response<ApiResponse<LoginResponseData>> response) {
                 if (response.isSuccessful() && response.body() != null) {
                     if (response.body().code == 0) {
-                        FnApiManager.getInstance().setToken(response.body().data.token);
+                        String tok = response.body().data.token;
+                        FnApiManager.getInstance().setToken(tok);
+                        prefs.edit().putString("auth_token", tok).apply();
                         Log.i(TAG, "HTTP 登录成功！耗时 " + (System.currentTimeMillis() - loginStartTime) + "ms");
                         Toast.makeText(MainActivity.this, "登录成功！", Toast.LENGTH_SHORT).show();
                         startActivity(new Intent(MainActivity.this, HomeActivity.class));

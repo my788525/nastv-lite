@@ -261,6 +261,24 @@ func (app *App) handleAdminLibraries(w http.ResponseWriter, r *http.Request) {
 				CreatedAt:     time.Now().Unix(),
 			}
 			app.store.data.Libraries[lib.ID] = lib
+			// 音乐库默认对所有账户开通权限
+			if lib.Mode == ModeMusic {
+				for _, u := range app.store.data.Users {
+					if u.Role == "admin" {
+						continue
+					}
+					has := false
+					for _, al := range u.AllowedLibs {
+						if al == "*" || al == lib.ID {
+							has = true
+							break
+						}
+					}
+					if !has {
+						u.AllowedLibs = append(u.AllowedLibs, lib.ID)
+					}
+				}
+			}
 		}
 		_ = app.store.saveLocked()
 		libCopy := *lib

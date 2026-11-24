@@ -198,6 +198,10 @@ public class HomeActivity extends AppCompatActivity {
         if (apiManager.getApi() == null && !baseUrl.isEmpty()) {
             apiManager.updateBaseUrl(baseUrl);
         }
+        if (apiManager.getToken() == null || apiManager.getToken().isEmpty()) {
+            String savedTok = prefs.getString("auth_token", "");
+            if (!savedTok.isEmpty()) apiManager.setToken(savedTok);
+        }
         // 切换服务器时清空观看记录
         String lastHost = prefs.getString("last_host", "");
         if (!lastHost.equals(baseUrl) && !lastHost.isEmpty()) {
@@ -312,6 +316,9 @@ public class HomeActivity extends AppCompatActivity {
             loadLiveChannels();
         } else if (currentTab == 0 && !overviewBuilt && showingOverview) {
             loadOverview();
+        } else if (mediaLibraries.isEmpty()) {
+            if (currentTab == 1) loadMediaLibraries();
+            else loadOverview();
         }
     }
 

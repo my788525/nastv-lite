@@ -156,6 +156,13 @@ public class PlayerActivity extends AppCompatActivity {
         apiManager = FnApiManager.getInstance();
         SharedPreferences prefs = getSharedPreferences("fntv_prefs", MODE_PRIVATE);
         baseUrl = prefs.getString("host", "").replaceAll("/+$", "");
+        if (apiManager.getApi() == null && !baseUrl.isEmpty()) {
+            apiManager.updateBaseUrl(baseUrl);
+        }
+        if (apiManager.getToken() == null || apiManager.getToken().isEmpty()) {
+            String savedTok = prefs.getString("auth_token", "");
+            if (!savedTok.isEmpty()) apiManager.setToken(savedTok);
+        }
         isHwDecode = "hardware".equals(prefs.getString("decoder_mode", "hardware"));
 
         itemGuid = getIntent().getStringExtra("guid");
@@ -581,23 +588,25 @@ public class PlayerActivity extends AppCompatActivity {
     private void initPlayer() {
         // 强制最高刷新率（Android 11+）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Window win = getWindow();
-            if (win != null) {
-                WindowManager.LayoutParams lp = win.getAttributes();
-                Display.Mode[] modes = getWindowManager().getDefaultDisplay().getSupportedModes();
-                float maxRefresh = 60f;
-                for (Display.Mode m : modes) {
-                    if (m.getRefreshRate() > maxRefresh) maxRefresh = m.getRefreshRate();
-                }
-                lp.preferredDisplayModeId = 0;
-                for (Display.Mode m : modes) {
-                    if (m.getRefreshRate() == maxRefresh) {
-                        lp.preferredDisplayModeId = m.getModeId();
-                        break;
+            try {
+                Window win = getWindow();
+                if (win != null) {
+                    WindowManager.LayoutParams lp = win.getAttributes();
+                    Display.Mode[] modes = getWindowManager().getDefaultDisplay().getSupportedModes();
+                    float maxRefresh = 60f;
+                    for (Display.Mode m : modes) {
+                        if (m.getRefreshRate() > maxRefresh) maxRefresh = m.getRefreshRate();
                     }
+                    lp.preferredDisplayModeId = 0;
+                    for (Display.Mode m : modes) {
+                        if (m.getRefreshRate() == maxRefresh) {
+                            lp.preferredDisplayModeId = m.getModeId();
+                            break;
+                        }
+                    }
+                    win.setAttributes(lp);
                 }
-                win.setAttributes(lp);
-            }
+            } catch (Throwable ignored) {}
         }
         DefaultRenderersFactory rf = new DefaultRenderersFactory(this);
         if ("software".equals(getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("decoder_mode", "hardware"))) {
@@ -1294,15 +1303,21 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void applyHdrMode() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-        boolean enabled = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getBoolean("hdr_enabled", false);
-        boolean videoHdr = isHdrVideo();
-        Log.d(TAG, "applyHdrMode: enabled=" + enabled + " videoHdr=" + videoHdr);
-        if (enabled && videoHdr) {
-            getWindow().setColorMode(ActivityInfo.COLOR_MODE_HDR);
-            danmuManager.showDanmuStatus("HDR 已开启");
-        } else {
-            getWindow().setColorMode(0);
-            if (videoHdr) danmuManager.showDanmuStatus("HDR 已关闭");
+        try {
+            boolean enabled = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getBoolean("hdr_enabled", false);
+            boolean videoHdr = isHdrVideo();
+            Log.d(TAG, "applyHdrMode: enabled=" + enabled + " videoHdr=" + videoHdr);
+            if (enabled && videoHdr) {
+                getWindow().setColorMode(ActivityInfo.COLOR_MODE_HDR);
+                if (danmuManager != null) danmuManager.showDanmuStatus("HDR 已开启");
+            } else {
+                if (videoHdr) {
+                    getWindow().setColorMode(0);
+                    if (danmuManager != null) danmuManager.showDanmuStatus("HDR 已关闭");
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "applyHdrMode ignored: " + t.getMessage());
         }
     }
 
