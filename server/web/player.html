@@ -267,8 +267,9 @@ async function loadNavTop() {
   window._curListItems = items;
 
   const toggleBtnLabel = top.mode === 'folder' ? '🎬 切换海报墙模式' : '📁 切换文件夹模式';
+  const breadcrumb = navStack.map(x => esc(x.title)).join(' / ');
   let html = `<div class="section-title">
-    <span>${top.mode === 'folder' ? '📁' : '🎬'} ${esc(top.title)} (${items.length})</span>
+    <span>${top.mode === 'folder' ? '📁' : '🎬'} ${breadcrumb} (${items.length})</span>
     <div style="display:flex;gap:8px">
       <button onclick="toggleLibViewMode()">${toggleBtnLabel}</button>
       <button class="sec" onclick="navBack()">⬆ 返回上一级</button>

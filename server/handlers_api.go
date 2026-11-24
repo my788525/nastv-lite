@@ -189,9 +189,31 @@ func (app *App) handleItemList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine if targetParent is a library ID or a folder/show GUID
+	app.store.mu.RLock()
+	libObj, isLibRoot := app.store.data.Libraries[targetParent]
+	effMode := ModeMovieTV
+	hasTargetModeItems := false
+	if isLibRoot {
+		effMode = libObj.Mode
+		if req.ViewMode == ModeFolder || req.ViewMode == ModeMovieTV {
+			effMode = req.ViewMode
+		}
+		for _, it := range app.store.data.Items {
+			if it.LibID == targetParent && it.ViewMode == effMode {
+				hasTargetModeItems = true
+				break
+			}
+		}
+	}
+	app.store.mu.RUnlock()
+
+	// Auto-upgrade legacy pre-v1.0.5 libraries that don't have dual-view items yet
+	if isLibRoot && !hasTargetModeItems && u.CanAccessLibrary(targetParent) {
+		_, _ = ScanLibrary(app.store, targetParent)
+	}
+
 	var list []PlayListItemDTO
 	app.store.mu.RLock()
-	_, isLibRoot := app.store.data.Libraries[targetParent]
 	for _, it := range app.store.data.Items {
 		if !u.CanAccessLibrary(it.LibID) {
 			continue
@@ -203,14 +225,14 @@ func (app *App) handleItemList(w http.ResponseWriter, r *http.Request) {
 		if lib, ok := app.store.data.Libraries[it.LibID]; ok {
 			libMode = lib.Mode
 		}
-		effMode := libMode
+		itemMode := libMode
 		if req.ViewMode == ModeFolder || req.ViewMode == ModeMovieTV {
-			effMode = req.ViewMode
+			itemMode = req.ViewMode
 		}
-		if isLibRoot && it.ViewMode != "" && it.ViewMode != effMode {
+		if isLibRoot && it.ViewMode != itemMode {
 			continue
 		}
-		list = append(list, app.toItemDTO(u.ID, it, effMode))
+		list = append(list, app.toItemDTO(u.ID, it, itemMode))
 	}
 	app.store.mu.RUnlock()
 
