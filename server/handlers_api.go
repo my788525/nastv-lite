@@ -27,9 +27,10 @@ func errResp(w http.ResponseWriter, code int, msg string) {
 }
 
 func (app *App) extractUser(r *http.Request) *User {
-	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	if auth != "" {
 		token := strings.TrimPrefix(auth, "Bearer ")
+		token = strings.TrimSpace(token)
 		if u, err := app.store.VerifyToken(token); err == nil {
 			return u
 		}
