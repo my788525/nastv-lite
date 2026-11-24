@@ -98,7 +98,7 @@
             <option value="360p">360P 省流 (800K)</option>
             <option value="audio">纯音频 (128K)</option>
           </select>
-          <select id="playModeSel">
+          <select id="playModeSel" onchange="saveWebPref('nastv_play_mode', this.value)">
             <option value="seq">🔁 列表循环</option>
             <option value="rand">🔀 随机播放</option>
             <option value="one">🔂 单曲循环</option>
@@ -124,6 +124,22 @@ let playIdx = -1;
 let curPlayingItem = null;
 let hlsInst = null;
 let saveTimer = null;
+
+function saveWebPref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function getWebPref(k, def) { try { const v = localStorage.getItem(k); return v !== null ? v : def; } catch (e) { return def; } }
+function getLibModeMap() {
+  try { return JSON.parse(localStorage.getItem('nastv_lib_modes') || '{}'); } catch (e) { return {}; }
+}
+function getRememberedLibMode(lib) {
+  const m = getLibModeMap();
+  if (lib && m[lib.guid]) return m[lib.guid];
+  return (lib && lib.mode) ? lib.mode : 'movie_tv';
+}
+function saveRememberedLibMode(libGuid, mode) {
+  const m = getLibModeMap();
+  m[libGuid] = mode;
+  saveWebPref('nastv_lib_modes', JSON.stringify(m));
+}
 
 function setCookie(name, val) {
   document.cookie = name + '=' + encodeURIComponent(val) + '; path=/; SameSite=Lax';
@@ -182,11 +198,18 @@ async function initApp() {
     }
     const lb = await api('/v/api/v1/mediadb/list');
     libs = lb.data || [];
-    goTab('home');
+    document.getElementById('qualitySel').value = getWebPref('nastv_quality', 'original');
+    document.getElementById('playModeSel').value = getWebPref('nastv_play_mode', 'seq');
+    const vEl = document.getElementById('videoEl');
+    const sv = parseFloat(getWebPref('nastv_volume', '1'));
+    if (!isNaN(sv)) vEl.volume = Math.max(0, Math.min(1, sv));
+    vEl.onvolumechange = () => saveWebPref('nastv_volume', String(vEl.volume));
+    goTab(getWebPref('nastv_last_tab', 'home'));
   } catch (e) {}
 }
 
 function goTab(tab) {
+  saveWebPref('nastv_last_tab', tab);
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   const tb = document.getElementById('tb-' + tab);
   if (tb) tb.classList.add('active');
@@ -206,35 +229,42 @@ async function renderHome() {
     html += `<div class="section-title">▶ 继续观看</div><div class="cards">${history.map(it => cardHtml(it)).join('')}</div>`;
   }
   html += `<div class="section-title">📚 我的媒体库</div><div class="cards">`;
-  html += libs.map(l => `
+  html += libs.map(l => {
+    const effM = getRememberedLibMode(l);
+    return `
     <div class="media-card" onclick="openLibrary('${l.guid}')">
-      <div class="poster">${l.mode === 'folder' ? '📁' : '🎬'}</div>
+      <div class="poster">${effM === 'folder' ? '📁' : '🎬'}</div>
       <div class="card-body">
         <div class="card-title">${esc(l.title)}</div>
-        <div class="card-sub">${l.mode === 'folder' ? '纯文件夹模式' : '影视剧模式'} · ${l.count} 项</div>
+        <div class="card-sub">${effM === 'folder' ? '纯文件夹模式' : '影视剧模式'} · ${l.count} 项</div>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
   html += `</div>`;
   area.innerHTML = html;
 }
 
 function renderLibs() {
   const area = document.getElementById('contentArea');
-  area.innerHTML = `<div class="section-title">📚 全部授权媒体库</div><div class="cards">` + libs.map(l => `
+  area.innerHTML = `<div class="section-title">📚 全部授权媒体库</div><div class="cards">` + libs.map(l => {
+    const effM = getRememberedLibMode(l);
+    return `
     <div class="media-card" onclick="openLibrary('${l.guid}')">
-      <div class="poster">${l.mode === 'folder' ? '📁' : '🎬'}</div>
+      <div class="poster">${effM === 'folder' ? '📁' : '🎬'}</div>
       <div class="card-body">
         <div class="card-title">${esc(l.title)}</div>
-        <div class="card-sub">${l.mode === 'folder' ? '纯文件夹模式 (支持下载)' : '影视剧模式'} · ${l.count} 项</div>
+        <div class="card-sub">${effM === 'folder' ? '纯文件夹模式 (支持下载)' : '影视剧模式'} · ${l.count} 项</div>
       </div>
     </div>
-  `).join('') + `</div>`;
+  `;
+  }).join('') + `</div>`;
 }
 
 async function openLibrary(libGuid) {
   const lib = libs.find(x => x.guid === libGuid);
-  navStack = [{ guid: libGuid, libGuid: libGuid, title: lib ? lib.title : '媒体库', mode: lib ? lib.mode : 'movie_tv' }];
+  const effMode = getRememberedLibMode(lib || { guid: libGuid, mode: 'movie_tv' });
+  navStack = [{ guid: libGuid, libGuid: libGuid, title: lib ? lib.title : '媒体库', mode: effMode }];
   await loadNavTop();
 }
 
@@ -242,6 +272,7 @@ async function toggleLibViewMode() {
   if (!navStack.length) return;
   const root = navStack[0];
   const nextMode = root.mode === 'folder' ? 'movie_tv' : 'folder';
+  saveRememberedLibMode(root.libGuid, nextMode);
   navStack = [{ guid: root.libGuid, libGuid: root.libGuid, title: root.title, mode: nextMode }];
   await loadNavTop();
 }
@@ -377,6 +408,7 @@ async function startPlayItem(it) {
 }
 
 function changeQuality() {
+  saveWebPref('nastv_quality', document.getElementById('qualitySel').value);
   if (!curPlayingItem) return;
   const v = document.getElementById('videoEl');
   const pos = v.currentTime || 0;

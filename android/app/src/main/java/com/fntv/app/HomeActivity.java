@@ -1856,6 +1856,13 @@ public class HomeActivity extends AppCompatActivity {
         if (libModeOverrides.containsKey(libGuid)) {
             return libModeOverrides.get(libGuid);
         }
+        if (prefs != null) {
+            String saved = prefs.getString("lib_mode_" + libGuid, "");
+            if (!saved.isEmpty()) {
+                libModeOverrides.put(libGuid, saved);
+                return saved;
+            }
+        }
         for (MediaDbItem l : mediaLibraries) {
             if (l.guid != null && l.guid.equals(libGuid)) {
                 return "folder".equalsIgnoreCase(l.mode) ? "folder" : "movie_tv";
@@ -1868,7 +1875,10 @@ public class HomeActivity extends AppCompatActivity {
         String cur = getEffectiveLibMode(libGuid);
         String next = "folder".equals(cur) ? "movie_tv" : "folder";
         libModeOverrides.put(libGuid, next);
-        prefs.edit().putString(PREF_VIEW_MODE, "folder".equals(next) ? "list" : "grid").apply();
+        prefs.edit()
+                .putString("lib_mode_" + libGuid, next)
+                .putString(PREF_VIEW_MODE, "folder".equals(next) ? "list" : "grid")
+                .apply();
         folderNavStack.clear();
         String title = currentBrowseTitle;
         for (MediaDbItem l : mediaLibraries) {
@@ -1885,8 +1895,9 @@ public class HomeActivity extends AppCompatActivity {
 
     private boolean isLibFolderForm(MediaDbItem lib) {
         if (lib == null) return false;
-        if ("folder".equalsIgnoreCase(lib.mode)) return true;
-        if ("movie_tv".equalsIgnoreCase(lib.mode)) return false;
+        String eff = getEffectiveLibMode(lib.guid);
+        if ("folder".equalsIgnoreCase(eff)) return true;
+        if ("movie_tv".equalsIgnoreCase(eff)) return false;
         if (isFolderHierarchyMode()) return true;
         String c = lib.category;
         if (c == null) return false;

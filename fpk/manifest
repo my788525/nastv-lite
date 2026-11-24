@@ -1,5 +1,5 @@
 appname               = nastv-lite
-version               = 1.0.6
+version               = 1.0.7
 display_name          = NASTV Lite
 desc                  = NASTV Lite 双模轻量化流媒体服务端（支持影视剧海报墙与纯文件夹浏览、多用户分权、FFmpeg硬件转码、IPv4/IPv6双栈及在线自动更新）
 platform              = x86
