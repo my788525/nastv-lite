@@ -383,7 +383,7 @@ public class MusicPlaybackService extends Service {
     public String[] getFloatingLyricLines() {
         if (currentLyrics == null || currentLyrics.isEmpty()) {
             PlayListItem item = getCurrentItem();
-            return new String[]{item != null ? item.title : "NASTV 音乐", currentArtist.isEmpty() ? "正在播放" : currentArtist};
+            return new String[]{item != null ? item.title : "NASFun 音乐", currentArtist.isEmpty() ? "正在播放" : currentArtist};
         }
         if (currentLyrics.hasTimed()) {
             int idx = LyricsParser.lineIndexAt(currentLyrics.timed, getCurrentPosition());
@@ -419,7 +419,7 @@ public class MusicPlaybackService extends Service {
         if (mediaSession == null || item == null) return;
         MediaMetadataCompat.Builder mb = new MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, item.title)
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist.isEmpty() ? "NASTV 音乐" : currentArtist)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, currentArtist.isEmpty() ? "NASFun 音乐" : currentArtist)
                 .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, currentAlbum);
         if (getDuration() > 0) {
             mb.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, getDuration());
@@ -441,7 +441,7 @@ public class MusicPlaybackService extends Service {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "NASTV 音乐播放", NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "NASFun 音乐播放", NotificationManager.IMPORTANCE_LOW);
             ch.setShowBadge(false);
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             if (nm != null) nm.createNotificationChannel(ch);
@@ -467,7 +467,7 @@ public class MusicPlaybackService extends Service {
         PendingIntent stopPi = PendingIntent.getService(this, 4, new Intent(this, MusicPlaybackService.class).setAction(ACTION_STOP), piFlags);
 
         PlayListItem item = getCurrentItem();
-        String title = item != null ? item.title : "NASTV 音乐";
+        String title = item != null ? item.title : "NASFun 音乐";
         String sub = currentArtist.isEmpty() ? "正在播放 NAS 音乐" : currentArtist;
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)

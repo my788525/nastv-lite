@@ -48,7 +48,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="24dp"
-                android:text="NASTV Lite"
+                android:text="NASFun"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
 

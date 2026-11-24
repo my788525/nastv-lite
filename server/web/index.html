@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NASTV Lite 管理控制台</title>
+<title>NASFun 管理控制台</title>
 <style>
   :root {
     --bg: #0b1120; --sidebar: #111827; --card: #1e293b; --border: #334155;
@@ -69,7 +69,7 @@
 
 <div id="loginView" class="login-wrap">
   <div class="card">
-    <div class="card-title">📺 NASTV Lite 管理控制台</div>
+    <div class="card-title">📺 NASFun 管理控制台</div>
     <div class="form-group">
       <label>管理员账号 (默认 admin)</label>
       <input id="loginUser" value="admin">
@@ -87,7 +87,7 @@
 <div id="mainView" class="layout hidden">
   <aside class="sidebar">
     <div class="brand">
-      <span>📺 NASTV Lite</span>
+      <span>📺 NASFun</span>
       <span class="badge" id="verBadge">v1.0.1</span>
     </div>
     <div class="nav-item active" data-tab="dash" onclick="switchTab('dash')">📊 系统概览</div>
@@ -192,7 +192,7 @@
         <div class="form-grid">
           <div class="form-group">
             <label>服务器名称（显示在控制台与状态接口）</label>
-            <input id="setServerName" placeholder="NASTV Lite">
+            <input id="setServerName" placeholder="NASFun">
           </div>
           <div class="form-group">
             <label>定时后台自动扫描媒体库</label>
@@ -571,7 +571,7 @@ async function loadSettings() {
   const r = await api('/api/admin/settings');
   if (r.code !== 0) return;
   const s = r.data;
-  document.getElementById('setServerName').value = s.server_name || 'NASTV Lite';
+  document.getElementById('setServerName').value = s.server_name || 'NASFun';
   document.getElementById('setAutoScan').value = String(s.auto_scan_hours ?? 6);
   document.getElementById('setThumbs').checked = !!s.enable_thumbnails;
   document.getElementById('setScraper').checked = s.enable_scraper !== false;
@@ -584,7 +584,7 @@ async function loadSettings() {
 
 async function saveSettings() {
   const body = {
-    server_name: document.getElementById('setServerName').value.trim() || 'NASTV Lite',
+    server_name: document.getElementById('setServerName').value.trim() || 'NASFun',
     auto_scan_hours: parseInt(document.getElementById('setAutoScan').value, 10) || 0,
     enable_thumbnails: document.getElementById('setThumbs').checked,
     enable_scraper: document.getElementById('setScraper').checked,

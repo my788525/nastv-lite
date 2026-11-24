@@ -89,7 +89,7 @@ func (app *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (app *App) handleSysVersion(w http.ResponseWriter, r *http.Request) {
 	okResp(w, map[string]interface{}{
-		"server":            "NASTV Lite",
+		"server":            "NASFun",
 		"nastv_lite_server": true,
 		"version_code":      ServerVersionCode,
 		"version_name":      ServerVersionName,

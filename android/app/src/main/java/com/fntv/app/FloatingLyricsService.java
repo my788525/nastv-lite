@@ -287,7 +287,7 @@ public class FloatingLyricsService extends Service {
     private void refreshContent() {
         MusicPlaybackService s = MusicPlaybackService.getInstance();
         if (s == null) {
-            tvTitle.setText("NASTV 音乐");
+            tvTitle.setText("NASFun 音乐");
             tvLyricMain.setText("暂无正在播放的歌曲");
             tvLyricNext.setText("轻触切回播放器");
             return;

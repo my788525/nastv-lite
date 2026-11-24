@@ -7,6 +7,7 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -16,6 +17,7 @@ import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -98,7 +100,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         topBar.addView(btnBack);
 
         TextView headerTitle = new TextView(this);
-        headerTitle.setText("🎵 NASTV 音乐");
+        headerTitle.setText("🎵 NASFun 音乐");
         headerTitle.setTextColor(Color.WHITE);
         headerTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         headerTitle.setTypeface(null, Typeface.BOLD);
@@ -258,6 +260,27 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         bottom.addView(btnRow);
         root.addView(bottom);
         setContentView(root);
+        btnPlayPause.requestFocus();
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        MusicPlaybackService s = MusicPlaybackService.getInstance();
+        if (s != null) {
+            if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY || keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE) {
+                s.togglePlayPause();
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_MEDIA_NEXT) {
+                s.playNext(false);
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_MEDIA_PREVIOUS) {
+                s.playPrevious();
+                return true;
+            }
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     private void applyOrientationLayout(int orientation) {
@@ -333,9 +356,13 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         }
         if (!FloatingLyricsService.canDraw(this)) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                Toast.makeText(this, "请授予“显示在其他应用上层”权限以开启悬浮歌词", Toast.LENGTH_LONG).show();
-                Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
-                startActivityForResult(i, REQ_OVERLAY);
+                try {
+                    Toast.makeText(this, "请授予“显示在其他应用上层”权限以开启悬浮歌词", Toast.LENGTH_LONG).show();
+                    Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
+                    startActivityForResult(i, REQ_OVERLAY);
+                } catch (Exception e) {
+                    Toast.makeText(this, "当前投影/电视系统不支持悬浮窗权限设置", Toast.LENGTH_SHORT).show();
+                }
                 return;
             }
         }
@@ -355,10 +382,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
     private void updateFloatingBtnState() {
         boolean on = FloatingLyricsService.isRunning();
         btnFloatLyrics.setText(on ? "🪟 悬浮歌词:开" : "🪟 悬浮歌词:关");
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.parseColor(on ? "#0284C7" : "#1E293B"));
-        bg.setCornerRadius(dp(16));
-        btnFloatLyrics.setBackground(bg);
+        btnFloatLyrics.setBackground(makeFocusDrawable(on ? "#0284C7" : "#1E293B", 16));
     }
 
     private void updatePlayModeBtn(int mode) {
@@ -437,16 +461,31 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         });
     }
 
+    private StateListDrawable makeFocusDrawable(String normalHex, int radiusDp) {
+        GradientDrawable normal = new GradientDrawable();
+        normal.setColor(Color.parseColor(normalHex));
+        normal.setCornerRadius(dp(radiusDp));
+
+        GradientDrawable focused = new GradientDrawable();
+        focused.setColor(Color.parseColor("#1E3A5F"));
+        focused.setCornerRadius(dp(radiusDp));
+        focused.setStroke(dp(2), Color.parseColor("#38BDF8"));
+
+        StateListDrawable sld = new StateListDrawable();
+        sld.addState(new int[]{android.R.attr.state_focused}, focused);
+        sld.addState(new int[]{android.R.attr.state_selected}, focused);
+        sld.addState(new int[]{}, normal);
+        return sld;
+    }
+
     private TextView makePillBtn(String text, String colorHex) {
         TextView tv = new TextView(this);
         tv.setText(text);
         tv.setTextColor(Color.WHITE);
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         tv.setPadding(dp(12), dp(6), dp(12), dp(6));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.parseColor(colorHex));
-        bg.setCornerRadius(dp(16));
-        tv.setBackground(bg);
+        tv.setFocusable(true);
+        tv.setBackground(makeFocusDrawable(colorHex, 16));
         return tv;
     }
 
@@ -457,6 +496,8 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
         tv.setGravity(Gravity.CENTER);
         tv.setPadding(dp(8), dp(10), dp(8), dp(10));
+        tv.setFocusable(true);
+        tv.setBackground(makeFocusDrawable("#00000000", 12));
         return tv;
     }
 

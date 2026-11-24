@@ -46,7 +46,7 @@ func NewStore(dataDir string) (*Store, error) {
 	}
 	if s.data.Settings.ServerName == "" {
 		s.data.Settings = ServerSettings{
-			ServerName:       "NASTV Lite",
+			ServerName:       "NASFun",
 			EnableVAAPI:      true,
 			TranscodePreset:  "veryfast",
 			HLSSegmentSec:    4,
@@ -309,7 +309,7 @@ func (s *Store) UpdateSettings(cfg ServerSettings) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if cfg.ServerName == "" {
-		cfg.ServerName = "NASTV Lite"
+		cfg.ServerName = "NASFun"
 	}
 	if cfg.TranscodePreset == "" {
 		cfg.TranscodePreset = "veryfast"

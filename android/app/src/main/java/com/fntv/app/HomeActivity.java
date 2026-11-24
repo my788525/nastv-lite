@@ -291,7 +291,7 @@ public class HomeActivity extends AppCompatActivity {
 
         TextView tvVersion = findViewById(R.id.tvVersionName);
         try {
-            tvVersion.setText("NASTV Lite v" + getPackageManager().getPackageInfo(getPackageName(), 0).versionName);
+            tvVersion.setText("NASFun v" + getPackageManager().getPackageInfo(getPackageName(), 0).versionName);
         } catch (Exception ignored) {}
     }
 

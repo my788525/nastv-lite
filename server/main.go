@@ -150,7 +150,7 @@ func main() {
 	}
 
 	v4, v6 := getLocalIPs()
-	log.Printf("NASTV Lite Server v%s started on :%s (IPv4/IPv6 dual-stack)", ServerVersionName, *port)
+	log.Printf("NASFun Server v%s started on :%s (IPv4/IPv6 dual-stack)", ServerVersionName, *port)
 	log.Printf("Data dir: %s | FFmpeg: %s | VAAPI: %v", *dataDir, transcoder.ffmpegPath, transcoder.hasVAAPI)
 	if len(v4) > 0 {
 		log.Printf("IPv4 URLs: http://%s:%s", strings.Join(v4, ", http://"), *port)
