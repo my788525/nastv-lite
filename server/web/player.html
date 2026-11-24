@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NASTV Lite 网页播放器</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0f19; --panel: #111827; --card: #1e293b; --border: #334155;
+    --text: #f8fafc; --muted: #94a3b8; --accent: #38bdf8; --green: #22c55e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .topbar { background: var(--panel); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; position: sticky; top: 0; z-index: 30; }
+  .brand { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .nav-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tab-btn { background: transparent; color: var(--muted); border: 1px solid transparent; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+  .tab-btn.active { background: rgba(56,189,248,.15); color: var(--accent); border-color: rgba(56,189,248,.35); }
+  .search-box { display: flex; gap: 6px; }
+  input, select { background: #0f172a; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; font-size: 14px; }
+  button { background: var(--accent); color: #0f172a; border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.sec { background: #334155; color: var(--text); }
+  .main { max-width: 1240px; margin: 0 auto; padding: 20px 16px; }
+  .section-title { font-size: 17px; font-weight: 700; margin: 18px 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 14px; }
+  .media-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: transform .15s, border-color .15s; display: flex; flex-direction: column; }
+  .media-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .poster { width: 100%; aspect-ratio: 16/10; background: #0f172a; object-fit: cover; display: flex; align-items: center; justify-content: center; font-size: 32px; color: var(--muted); }
+  .card-body { padding: 10px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+  .card-title { font-size: 13px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .list-row { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .list-left { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; cursor: pointer; }
+  .list-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list-meta { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+  .player-wrap { background: #000; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); margin-bottom: 18px; }
+  video { width: 100%; max-height: 70vh; background: #000; display: block; }
+  .player-bar { background: var(--panel); padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--border); }
+  .login-box { max-width: 380px; margin: 90px auto; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .form-group input { width: 100%; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 99px; background: rgba(56,189,248,.15); color: var(--accent); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="loginView" class="login-box">
+  <h2 style="margin-bottom:16px">🎬 NASTV Lite 网页播放端</h2>
+  <div class="form-group">
+    <label>用户名</label>
+    <input id="uName" placeholder="输入账号">
+  </div>
+  <div class="form-group">
+    <label>密码</label>
+    <input id="uPass" type="password" placeholder="输入密码" onkeydown="if(event.key==='Enter')doLogin()">
+  </div>
+  <button style="width:100%;padding:10px" onclick="doLogin()">登录</button>
+  <p id="loginErr" style="color:#ef4444;font-size:13px;margin-top:10px"></p>
+</div>
+
+<div id="appView" class="hidden">
+  <header class="topbar">
+    <div class="brand">
+      <span>📺 NASTV Lite</span>
+      <span class="badge" id="userBadge"></span>
+    </div>
+    <div class="nav-tabs">
+      <button class="tab-btn active" id="tb-home" onclick="goTab('home')">🏠 首页</button>
+      <button class="tab-btn" id="tb-libs" onclick="goTab('libs')">📚 媒体库</button>
+      <button class="tab-btn" id="tb-files" onclick="goTab('files')">📁 文件浏览/下载</button>
+    </div>
+    <div class="search-box">
+      <input id="qInput" placeholder="搜索视频..." onkeydown="if(event.key==='Enter')doSearch()">
+      <button class="sec" onclick="doSearch()">搜索</button>
+      <button class="sec hidden" id="btnAdminLink" onclick="location.href='/'">⚙️ 管理台</button>
+      <button class="sec" onclick="logout()">退出</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- Built-in Web Video Player -->
+    <div id="playerSection" class="player-wrap hidden">
+      <video id="videoEl" controls autoplay playsinline></video>
+      <div class="player-bar">
+        <div>
+          <b id="nowPlayingTitle">-</b>
+          <span id="nowPlayingSub" style="font-size:12px;color:var(--muted);margin-left:8px"></span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="qualitySel" onchange="changeQuality()">
+            <option value="original">原画 (Direct Play)</option>
+            <option value="1080p">1080P (8M HLS)</option>
+            <option value="720p">720P (4M HLS)</option>
+            <option value="480p">480P (1.5M HLS)</option>
+            <option value="360p">360P 省流 (800K)</option>
+            <option value="audio">纯音频 (128K)</option>
+          </select>
+          <select id="playModeSel">
+            <option value="seq">🔁 列表循环</option>
+            <option value="rand">🔀 随机播放</option>
+            <option value="one">🔂 单曲循环</option>
+          </select>
+          <button class="sec" onclick="playNextInQueue()">⏭ 下一个</button>
+          <a id="btnPlayerDownload" class="hidden" target="_blank"><button class="sec">⬇ 下载原文件</button></a>
+          <button class="sec" onclick="closePlayer()">✕ 关闭播放器</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="contentArea"></div>
+  </main>
+</div>
+
+<script>
+let token = localStorage.getItem('nastv_token') || '';
+let curUser = null;
+let libs = [];
+let navStack = [];
+let playQueue = [];
+let playIdx = -1;
+let curPlayingItem = null;
+let hlsInst = null;
+let saveTimer = null;
+
+function setCookie(name, val) {
+  document.cookie = name + '=' + encodeURIComponent(val) + '; path=/; SameSite=Lax';
+}
+
+async function api(url, opts = {}) {
+  opts.headers = opts.headers || {};
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (opts.body && typeof opts.body !== 'string') {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.body);
+  }
+  const r = await fetch(url, opts);
+  const j = await r.json();
+  if (r.status === 401 || j.code === -2) { logout(); throw new Error('unauthorized'); }
+  return j;
+}
+
+async function doLogin() {
+  const username = document.getElementById('uName').value.trim();
+  const password = document.getElementById('uPass').value;
+  const r = await fetch('/v/api/v1/login', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username, password})
+  }).then(x => x.json());
+  if (r.code !== 0) {
+    document.getElementById('loginErr').innerText = r.msg || '登录失败';
+    return;
+  }
+  token = r.data.token;
+  localStorage.setItem('nastv_token', token);
+  setCookie('nastv_token', token);
+  initApp();
+}
+
+function logout() {
+  token = '';
+  localStorage.removeItem('nastv_token');
+  setCookie('nastv_token', '');
+  closePlayer();
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById('loginView').classList.remove('hidden');
+}
+
+async function initApp() {
+  if (!token) return;
+  setCookie('nastv_token', token);
+  try {
+    const ui = await api('/v/api/v1/user/info');
+    curUser = ui.data;
+    document.getElementById('loginView').classList.add('hidden');
+    document.getElementById('appView').classList.remove('hidden');
+    document.getElementById('userBadge').innerText = curUser.username;
+    if (curUser.role === 'admin') {
+      document.getElementById('btnAdminLink').classList.remove('hidden');
+    }
+    const lb = await api('/v/api/v1/mediadb/list');
+    libs = lb.data || [];
+    goTab('home');
+  } catch (e) {}
+}
+
+function goTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const tb = document.getElementById('tb-' + tab);
+  if (tb) tb.classList.add('active');
+  if (tab === 'home') renderHome();
+  if (tab === 'libs') renderLibs();
+  if (tab === 'files') loadRemoteFiles('');
+}
+
+async function renderHome() {
+  const area = document.getElementById('contentArea');
+  area.innerHTML = '<p style="color:var(--muted)">加载中...</p>';
+  const pl = await api('/v/api/v1/play/list');
+  const history = (pl.data || []).filter(x => !(x.duration > 0 && x.duration < 600)).slice(0, 12);
+
+  let html = '';
+  if (history.length > 0) {
+    html += `<div class="section-title">▶ 继续观看</div><div class="cards">${history.map(it => cardHtml(it)).join('')}</div>`;
+  }
+  html += `<div class="section-title">📚 我的媒体库</div><div class="cards">`;
+  html += libs.map(l => `
+    <div class="media-card" onclick="openLibrary('${l.guid}')">
+      <div class="poster">${l.mode === 'folder' ? '📁' : '🎬'}</div>
+      <div class="card-body">
+        <div class="card-title">${esc(l.title)}</div>
+        <div class="card-sub">${l.mode === 'folder' ? '纯文件夹模式' : '影视剧模式'} · ${l.count} 项</div>
+      </div>
+    </div>
+  `).join('');
+  html += `</div>`;
+  area.innerHTML = html;
+}
+
+function renderLibs() {
+  const area = document.getElementById('contentArea');
+  area.innerHTML = `<div class="section-title">📚 全部授权媒体库</div><div class="cards">` + libs.map(l => `
+    <div class="media-card" onclick="openLibrary('${l.guid}')">
+      <div class="poster">${l.mode === 'folder' ? '📁' : '🎬'}</div>
+      <div class="card-body">
+        <div class="card-title">${esc(l.title)}</div>
+        <div class="card-sub">${l.mode === 'folder' ? '纯文件夹模式 (支持下载)' : '影视剧模式'} · ${l.count} 项</div>
+      </div>
+    </div>
+  `).join('') + `</div>`;
+}
+
+async function openLibrary(libGuid) {
+  const lib = libs.find(x => x.guid === libGuid);
+  navStack = [{ guid: libGuid, title: lib ? lib.title : '媒体库', mode: lib ? lib.mode : 'movie_tv' }];
+  await loadNavTop();
+}
+
+async function enterFolder(guid, title, mode) {
+  navStack.push({ guid, title, mode });
+  await loadNavTop();
+}
+
+async function navBack() {
+  if (navStack.length <= 1) { goTab('libs'); return; }
+  navStack.pop();
+  await loadNavTop();
+}
+
+async function loadNavTop() {
+  const top = navStack[navStack.length - 1];
+  const area = document.getElementById('contentArea');
+  area.innerHTML = '<p style="color:var(--muted)">加载目录中...</p>';
+  const r = await api('/v/api/v1/item/list', { method: 'POST', body: { parent_guid: top.guid, page_size: 500 } });
+  const items = (r.data && r.data.list) || [];
+  window._curListItems = items;
+
+  let html = `<div class="section-title">
+    <span>${top.mode === 'folder' ? '📁' : '🎬'} ${esc(top.title)} (${items.length})</span>
+    <div style="display:flex;gap:8px">
+      <button class="sec" onclick="navBack()">⬆ 返回上一级</button>
+    </div>
+  </div>`;
+
+  if (top.mode === 'folder') {
+    // Pure Folder Mode: clean rows with Play + Download buttons!
+    html += items.map((it, idx) => {
+      const isDir = it.type === 'Directory';
+      const dlUrl = `/v/api/v1/media/range/${it.guid}?token=${encodeURIComponent(token)}`;
+      return `
+        <div class="list-row">
+          <div class="list-left" onclick="${isDir ? `enterFolder('${it.guid}','${escAttr(it.title)}','folder')` : `playFromCurList(${idx})`}">
+            <span style="font-size:20px">${isDir ? '📁' : (it.type === 'Audio' ? '🎵' : '🎬')}</span>
+            <span class="list-name">${esc(it.title)}</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="list-meta">${isDir ? '目录' : fmtSize(it.file_size)}</span>
+            ${!isDir ? `<button onclick="playFromCurList(${idx})">▶ 播放</button>
+              <a href="${dlUrl}" download="${escAttr(it.title)}"><button class="sec">⬇ 下载</button></a>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('') || '<p style="color:var(--muted)">空文件夹</p>';
+  } else {
+    html += `<div class="cards">${items.map((it, idx) => cardHtml(it, idx)).join('')}</div>`;
+  }
+  area.innerHTML = html;
+}
+
+function cardHtml(it, idx) {
+  const posterHtml = it.poster ? `<img class="poster" src="${it.poster}" loading="lazy">` : `<div class="poster">${it.type === 'TV' ? '📺' : '🎬'}</div>`;
+  const clickFn = it.type === 'TV' ? `openTVShow('${it.guid}','${escAttr(it.title)}')`
+    : (it.type === 'Directory' ? `enterFolder('${it.guid}','${escAttr(it.title)}','folder')` : `playItemObj(${JSON.stringify(it).replace(/"/g, '&quot;')})`);
+  return `
+    <div class="media-card" onclick="${clickFn}">
+      ${posterHtml}
+      <div class="card-body">
+        <div class="card-title">${esc(it.title)}</div>
+        <div class="card-sub">${it.type}${it.year ? ' · ' + it.year : ''}${it.ts > 0 ? ' · 续播' : ''}</div>
+      </div>
+    </div>
+  `;
+}
+
+async function openTVShow(tvGuid, title) {
+  const r = await api('/v/api/v1/episode/list/' + tvGuid);
+  const eps = r.data || [];
+  window._curListItems = eps;
+  const area = document.getElementById('contentArea');
+  let html = `<div class="section-title">
+    <span>📺 ${esc(title)} (共 ${eps.length} 集)</span>
+    <button class="sec" onclick="loadNavTop()">⬆ 返回</button>
+  </div>`;
+  html += eps.map((ep, idx) => `
+    <div class="list-row">
+      <div class="list-left" onclick="playFromCurList(${idx})">
+        <span class="badge">EP${ep.episode_number || (idx + 1)}</span>
+        <span class="list-name">${esc(ep.title)}</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="playFromCurList(${idx})">▶ 播放</button>
+      </div>
+    </div>
+  `).join('');
+  area.innerHTML = html;
+}
+
+function playFromCurList(idx) {
+  const items = (window._curListItems || []).filter(x => x.type !== 'Directory' && x.type !== 'TV');
+  const target = (window._curListItems || [])[idx];
+  playQueue = items;
+  playIdx = items.findIndex(x => x.guid === target.guid);
+  startPlayItem(target);
+}
+
+function playItemObj(it) {
+  playQueue = [it];
+  playIdx = 0;
+  startPlayItem(it);
+}
+
+async function startPlayItem(it) {
+  if (!it) return;
+  curPlayingItem = it;
+  document.getElementById('playerSection').classList.remove('hidden');
+  document.getElementById('nowPlayingTitle').innerText = it.title;
+  document.getElementById('nowPlayingSub').innerText = it.tv_title || '';
+  const dl = document.getElementById('btnPlayerDownload');
+  dl.href = `/v/api/v1/media/range/${it.guid}?token=${encodeURIComponent(token)}`;
+  dl.download = it.title;
+  dl.classList.remove('hidden');
+
+  // Probe & fetch saved ts
+  try {
+    const info = await api('/v/api/v1/play/info', { method: 'POST', body: { item_guid: it.guid } });
+    if (info.data && info.data.ts > 0 && !(it.duration > 0 && it.duration < 600)) {
+      it.ts = info.data.ts;
+    }
+  } catch (e) {}
+
+  loadStream(it, document.getElementById('qualitySel').value, it.ts || 0);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function changeQuality() {
+  if (!curPlayingItem) return;
+  const v = document.getElementById('videoEl');
+  const pos = v.currentTime || 0;
+  loadStream(curPlayingItem, document.getElementById('qualitySel').value, pos);
+}
+
+function loadStream(it, q, seekSec) {
+  const v = document.getElementById('videoEl');
+  if (hlsInst) { hlsInst.destroy(); hlsInst = null; }
+  clearInterval(saveTimer);
+
+  if (q === 'original') {
+    v.src = `/v/api/v1/media/range/${it.guid}?token=${encodeURIComponent(token)}`;
+    if (seekSec > 0) v.currentTime = seekSec;
+    v.play().catch(() => {});
+  } else {
+    const hlsUrl = `/v/api/v1/hls/${it.guid}/${q}/index.m3u8?token=${encodeURIComponent(token)}`;
+    if (window.Hls && Hls.isSupported()) {
+      hlsInst = new Hls({
+        xhrSetup: (xhr) => { xhr.setRequestHeader('Authorization', 'Bearer ' + token); }
+      });
+      hlsInst.loadSource(hlsUrl);
+      hlsInst.attachMedia(v);
+      hlsInst.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (seekSec > 0) v.currentTime = seekSec;
+        v.play().catch(() => {});
+      });
+    } else {
+      v.src = hlsUrl;
+      if (seekSec > 0) v.currentTime = seekSec;
+      v.play().catch(() => {});
+    }
+  }
+
+  v.onended = () => playNextInQueue();
+  saveTimer = setInterval(() => {
+    if (v.paused || !curPlayingItem) return;
+    const dur = Math.floor(v.duration || 0);
+    if (dur > 0 && dur < 600) return;
+    api('/v/api/v1/play/record', {
+      method: 'POST',
+      body: { item_guid: curPlayingItem.guid, ts: Math.floor(v.currentTime || 0), duration: dur }
+    }).catch(() => {});
+  }, 10000);
+}
+
+function playNextInQueue() {
+  if (!playQueue.length) return;
+  const mode = document.getElementById('playModeSel').value;
+  if (mode === 'one') {
+    startPlayItem(playQueue[playIdx]);
+    return;
+  }
+  if (mode === 'rand' && playQueue.length > 1) {
+    let r = Math.floor(Math.random() * playQueue.length);
+    if (r === playIdx) r = (r + 1) % playQueue.length;
+    playIdx = r;
+    startPlayItem(playQueue[playIdx]);
+    return;
+  }
+  if (playIdx + 1 < playQueue.length) {
+    playIdx++;
+    startPlayItem(playQueue[playIdx]);
+  } else if (playQueue.length > 0) {
+    playIdx = 0;
+    startPlayItem(playQueue[playIdx]);
+  }
+}
+
+function closePlayer() {
+  const v = document.getElementById('videoEl');
+  if (hlsInst) { hlsInst.destroy(); hlsInst = null; }
+  clearInterval(saveTimer);
+  v.pause();
+  v.removeAttribute('src');
+  document.getElementById('playerSection').classList.add('hidden');
+}
+
+async function doSearch() {
+  const q = document.getElementById('qInput').value.trim();
+  if (!q) return;
+  const r = await api('/v/api/v1/search/list?q=' + encodeURIComponent(q));
+  const items = r.data || [];
+  document.getElementById('contentArea').innerHTML = `<div class="section-title">🔍 搜索结果: ${esc(q)} (${items.length})</div><div class="cards">${items.map(it => cardHtml(it)).join('')}</div>`;
+}
+
+async function loadRemoteFiles(path) {
+  const area = document.getElementById('contentArea');
+  area.innerHTML = '<p style="color:var(--muted)">正在加载远程文件...</p>';
+  const r = await api('/v/api/v1/files/list?path=' + encodeURIComponent(path || ''));
+  if (r.code !== 0) { area.innerHTML = '<p>' + esc(r.msg) + '</p>'; return; }
+  const d = r.data;
+  const cur = d.current || '';
+  const par = d.parent || '';
+  let html = `<div class="section-title">
+    <span>📁 远程文件浏览：${esc(cur || '授权根目录')}</span>
+    ${cur ? `<button class="sec" onclick="loadRemoteFiles('${escAttr(par)}')">⬆ 上级目录</button>` : ''}
+  </div>`;
+  html += (d.entries || []).map(e => {
+    const dlUrl = `/v/api/v1/files/download?path=${encodeURIComponent(e.path)}&token=${encodeURIComponent(token)}`;
+    return `
+      <div class="list-row">
+        <div class="list-left" onclick="${e.is_dir ? `loadRemoteFiles('${escAttr(e.path)}')` : `window.open('${dlUrl}','_blank')`}">
+          <span style="font-size:20px">${e.is_dir ? '📁' : (e.ext === 'apk' ? '📦' : '📄')}</span>
+          <span class="list-name">${esc(e.name)}</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="list-meta">${e.is_dir ? '文件夹' : fmtSize(e.size)}</span>
+          ${!e.is_dir ? `<a href="${dlUrl}" download="${escAttr(e.name)}"><button>⬇ 下载</button></a>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('') || '<p style="color:var(--muted)">空目录</p>';
+  area.innerHTML = html;
+}
+
+function fmtSize(b) {
+  if (!b) return '-';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+  return (b / 1073741824).toFixed(2) + ' GB';
+}
+function esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escAttr(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
+if (token) initApp();
+</script>
+</body>
+</html>

@@ -79,6 +79,7 @@
       <input id="loginPass" type="password" value="admin123" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <button style="width:100%;padding:10px" onclick="doLogin()">登录控制台</button>
+    <button class="sec" style="width:100%;padding:10px;margin-top:8px" onclick="location.href='/play'">🎬 直接进入网页端播放器</button>
     <p id="loginErr" style="color:var(--red);font-size:13px;margin-top:10px"></p>
   </div>
 </div>
@@ -96,6 +97,7 @@
     <div class="nav-item" data-tab="settings" onclick="switchTab('settings')">⚙️ 服务端设置</div>
     <div class="nav-item" data-tab="updates" onclick="switchTab('updates')">🔄 在线更新</div>
     <div class="sidebar-footer">
+      <button style="width:100%;margin-bottom:8px" onclick="location.href='/play'">🎬 打开网页端播放器</button>
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px">双栈 IPv4 / IPv6 就绪</div>
       <button class="sec" style="width:100%" onclick="logout()">退出登录</button>
     </div>
@@ -447,6 +449,10 @@ async function doLogin() {
   }
   token = r.data.token;
   localStorage.setItem('nastv_token', token);
+  if (r.data.role !== 'admin') {
+    location.href = '/play';
+    return;
+  }
   initDashboard();
 }
 

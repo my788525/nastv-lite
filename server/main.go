@@ -17,6 +17,9 @@ import (
 //go:embed web/index.html
 var adminIndexHTML []byte
 
+//go:embed web/player.html
+var webPlayerHTML []byte
+
 type App struct {
 	port       string
 	dataDir    string
@@ -70,6 +73,14 @@ func main() {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(adminIndexHTML)
 	})
+
+	// Web Player Client (/play & /web)
+	servePlayer := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(webPlayerHTML)
+	}
+	mux.HandleFunc("/play", servePlayer)
+	mux.HandleFunc("/web", servePlayer)
 
 	// Client Media API (/v/api/v1/...)
 	mux.HandleFunc("/v/api/v1/login", app.handleLogin)

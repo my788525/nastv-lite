@@ -1,11 +1,11 @@
 {
   "server": {
-    "versionCode": 3,
-    "versionName": "1.0.2",
-    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.2/nastv-server-linux-amd64",
-    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.2/nastv-server-windows-amd64.exe",
-    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.2/nastv-lite-x86_64-v1.0.2.fpk",
-    "changelog": "NASTV Lite 服务端 v1.0.2：\n1. 新增客户端「文件浏览」服务端接口（支持浏览与拉取任意格式文件，按用户媒体库权限隔离）。\n2. 新增内置多服务商 DDNS 引擎：支持 Cloudflare（完整支持 IPv6 AAAA & IPv4 A）、阿里云 DNS、腾讯云 DNSPod、DuckDNS 与自定义 Webhook。\n3. Web 控制台新增 DDNS 管理标签页、公网 IPv4/IPv6 一键探测与定时同步调度器。"
+    "versionCode": 4,
+    "versionName": "1.0.3",
+    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.3/nastv-server-linux-amd64",
+    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.3/nastv-server-windows-amd64.exe",
+    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.0.3/nastv-lite-x86_64-v1.0.3.fpk",
+    "changelog": "NASTV Lite 服务端 v1.0.3：\n1. 新增内置「Web 网页端播放器 (/play)」，支持多用户鉴权登录与媒体库权限隔离，普通用户登录后自动进入播放端。\n2. 网页端完整支持影视剧海报墙、纯文件夹逐级浏览与文件直接下载、多清晰度 HLS 转码切换、云端续播进度同步与远程文件浏览下载。"
   },
   "android": {
     "versionCode": 2,

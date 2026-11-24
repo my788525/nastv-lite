@@ -37,6 +37,11 @@ func (app *App) extractUser(r *http.Request) *User {
 			return u
 		}
 	}
+	if c, err := r.Cookie("nastv_token"); err == nil && c.Value != "" {
+		if u, err := app.store.VerifyToken(c.Value); err == nil {
+			return u
+		}
+	}
 	return nil
 }
 
