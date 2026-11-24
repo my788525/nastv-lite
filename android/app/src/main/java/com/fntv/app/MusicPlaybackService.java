@@ -28,17 +28,29 @@ import com.fntv.app.api.model.ApiResponse;
 import com.fntv.app.api.model.AudioLyricsResponse;
 import com.fntv.app.api.model.PlayListItem;
 import com.fntv.app.util.LyricsParser;
+import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.database.StandaloneDatabaseProvider;
 import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
 import com.google.android.exoplayer2.upstream.DataSource;
+import com.google.android.exoplayer2.upstream.DataSpec;
+import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
+import com.google.android.exoplayer2.upstream.cache.CacheWriter;
+import com.google.android.exoplayer2.upstream.cache.LeastRecentlyUsedCacheEvictor;
+import com.google.android.exoplayer2.upstream.cache.SimpleCache;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -94,6 +106,15 @@ public class MusicPlaybackService extends Service {
     private final Random random = new Random();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    private static final long MAX_MUSIC_CACHE_BYTES = 512L * 1024L * 1024L;
+    private SimpleCache musicCache;
+    private CacheDataSource.Factory cacheDataSourceFactory;
+    private final ExecutorService prefetchExecutor = Executors.newSingleThreadExecutor();
+    private final AtomicInteger prefetchGeneration = new AtomicInteger(0);
+    private volatile CacheWriter activeCacheWriter;
+    private volatile int nextShuffleIndex = -1;
+    private final ConcurrentHashMap<String, AudioLyricsResponse> lyricsCache = new ConcurrentHashMap<>();
+
     private static List<PlayListItem> pendingQueue;
     private static int pendingIndex = 0;
 
@@ -148,15 +169,36 @@ public class MusicPlaybackService extends Service {
             wakeLock.setReferenceCounted(false);
         }
 
-        DataSource.Factory dsFactory = new DataSource.Factory() {
+        DataSource.Factory upstreamFactory = new DataSource.Factory() {
             @Override
             public DataSource createDataSource() {
                 return new OkHttpExoDataSource(FnApiManager.getInstance().getStreamClient());
             }
         };
 
+        DataSource.Factory dsFactory = upstreamFactory;
+        try {
+            File cacheDir = new File(getCacheDir(), "music_cache");
+            musicCache = new SimpleCache(
+                    cacheDir,
+                    new LeastRecentlyUsedCacheEvictor(MAX_MUSIC_CACHE_BYTES),
+                    new StandaloneDatabaseProvider(this));
+            cacheDataSourceFactory = new CacheDataSource.Factory()
+                    .setCache(musicCache)
+                    .setUpstreamDataSourceFactory(upstreamFactory)
+                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);
+            dsFactory = cacheDataSourceFactory;
+        } catch (Exception e) {
+            Log.w(TAG, "Init music disk cache failed, fallback to direct stream: " + e.getMessage());
+        }
+
+        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(15_000, 90_000, 1_500, 3_000)
+                .build();
+
         player = new ExoPlayer.Builder(this)
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dsFactory))
+                .setLoadControl(loadControl)
                 .build();
         player.addListener(new Player.Listener() {
             @Override
@@ -231,11 +273,7 @@ public class MusicPlaybackService extends Service {
             audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
         }
 
-        String baseUrl = FnApiManager.getInstance().getBaseUrl();
-        if (baseUrl == null || baseUrl.isEmpty()) {
-            String saved = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("server_url", "");
-            baseUrl = FnApiManager.normalizeHostUrl(saved);
-        }
+        String baseUrl = resolveBaseUrl();
         String streamUrl = baseUrl + "/v/api/v1/media/range/" + item.guid;
         Log.d(TAG, "Playing audio: " + item.title + " -> " + streamUrl);
 
@@ -254,25 +292,105 @@ public class MusicPlaybackService extends Service {
         }
 
         fetchLyrics(item);
+        schedulePrefetchNextTracks(index, baseUrl);
     }
 
-    private void fetchLyrics(final PlayListItem item) {
-        if (FnApiManager.getInstance().getApi() == null || item == null) return;
+    private String resolveBaseUrl() {
+        String baseUrl = FnApiManager.getInstance().getBaseUrl();
+        if (baseUrl == null || baseUrl.isEmpty()) {
+            String saved = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("server_url", "");
+            baseUrl = FnApiManager.normalizeHostUrl(saved);
+        }
+        return baseUrl;
+    }
+
+    private void schedulePrefetchNextTracks(final int curIndex, final String baseUrl) {
+        if (cacheDataSourceFactory == null || baseUrl == null || baseUrl.isEmpty()) return;
+        final int gen = prefetchGeneration.incrementAndGet();
+        CacheWriter prevWriter = activeCacheWriter;
+        if (prevWriter != null) {
+            try { prevWriter.cancel(); } catch (Exception ignored) {}
+        }
+
+        final List<PlayListItem> targets = new ArrayList<>();
+        synchronized (queue) {
+            int size = queue.size();
+            if (size <= 1) return;
+            if (playMode == MODE_SHUFFLE) {
+                int next = random.nextInt(size);
+                if (next == curIndex) next = (next + 1) % size;
+                nextShuffleIndex = next;
+                targets.add(queue.get(next));
+                if (size > 2) {
+                    int next2 = (next + 1) % size;
+                    if (next2 != curIndex) targets.add(queue.get(next2));
+                }
+            } else if (playMode != MODE_LOOP_ONE) {
+                int next1 = (curIndex + 1) % size;
+                targets.add(queue.get(next1));
+                if (size > 2) {
+                    int next2 = (curIndex + 2) % size;
+                    if (next2 != curIndex) targets.add(queue.get(next2));
+                }
+            }
+        }
+
+        for (PlayListItem t : targets) {
+            prefetchLyricsSilently(t);
+        }
+
+        prefetchExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                for (PlayListItem target : targets) {
+                    if (gen != prefetchGeneration.get()) return;
+                    String url = baseUrl + "/v/api/v1/media/range/" + target.guid;
+                    try {
+                        CacheDataSource ds = cacheDataSourceFactory.createDataSourceForDownloading();
+                        DataSpec spec = new DataSpec(Uri.parse(url));
+                        CacheWriter writer = new CacheWriter(ds, spec, null, null);
+                        activeCacheWriter = writer;
+                        writer.cache();
+                        Log.d(TAG, "Pre-cached track: " + target.title);
+                    } catch (Exception e) {
+                        if (gen != prefetchGeneration.get()) return;
+                        Log.w(TAG, "Pre-cache skipped for " + target.title + ": " + e.getMessage());
+                    } finally {
+                        activeCacheWriter = null;
+                    }
+                }
+            }
+        });
+    }
+
+    private void prefetchLyricsSilently(final PlayListItem item) {
+        if (item == null || lyricsCache.containsKey(item.guid) || FnApiManager.getInstance().getApi() == null) return;
         FnApiManager.getInstance().getApi().getAudioLyrics(item.guid).enqueue(new Callback<ApiResponse<AudioLyricsResponse>>() {
             @Override
             public void onResponse(Call<ApiResponse<AudioLyricsResponse>> call, Response<ApiResponse<AudioLyricsResponse>> resp) {
-                PlayListItem cur = getCurrentItem();
-                if (cur == null || !item.guid.equals(cur.guid)) return;
                 if (resp.isSuccessful() && resp.body() != null && resp.body().data != null) {
-                    AudioLyricsResponse d = resp.body().data;
-                    if (d.artist != null && !d.artist.isEmpty()) currentArtist = d.artist;
-                    if (d.album != null && !d.album.isEmpty()) currentAlbum = d.album;
-                    currentLyrics = LyricsParser.parse(d.lrc);
-                    updateMediaSessionMetadata(cur);
-                    updateNotification();
-                    for (Listener l : listeners) {
-                        l.onLyricsLoaded(currentLyrics, currentArtist, currentAlbum);
-                    }
+                    lyricsCache.put(item.guid, resp.body().data);
+                }
+            }
+            @Override
+            public void onFailure(Call<ApiResponse<AudioLyricsResponse>> call, Throwable t) {}
+        });
+    }
+
+    private void fetchLyrics(final PlayListItem item) {
+        if (item == null) return;
+        AudioLyricsResponse cached = lyricsCache.get(item.guid);
+        if (cached != null) {
+            applyLyricsResponse(item, cached);
+            return;
+        }
+        if (FnApiManager.getInstance().getApi() == null) return;
+        FnApiManager.getInstance().getApi().getAudioLyrics(item.guid).enqueue(new Callback<ApiResponse<AudioLyricsResponse>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<AudioLyricsResponse>> call, Response<ApiResponse<AudioLyricsResponse>> resp) {
+                if (resp.isSuccessful() && resp.body() != null && resp.body().data != null) {
+                    lyricsCache.put(item.guid, resp.body().data);
+                    applyLyricsResponse(item, resp.body().data);
                 }
             }
 
@@ -281,6 +399,19 @@ public class MusicPlaybackService extends Service {
                 Log.w(TAG, "Lyrics fetch failed: " + t.getMessage());
             }
         });
+    }
+
+    private void applyLyricsResponse(PlayListItem item, AudioLyricsResponse d) {
+        PlayListItem cur = getCurrentItem();
+        if (cur == null || !item.guid.equals(cur.guid)) return;
+        if (d.artist != null && !d.artist.isEmpty()) currentArtist = d.artist;
+        if (d.album != null && !d.album.isEmpty()) currentAlbum = d.album;
+        currentLyrics = LyricsParser.parse(d.lrc);
+        updateMediaSessionMetadata(cur);
+        updateNotification();
+        for (Listener l : listeners) {
+            l.onLyricsLoaded(currentLyrics, currentArtist, currentAlbum);
+        }
     }
 
     public void togglePlayPause() {
@@ -313,8 +444,12 @@ public class MusicPlaybackService extends Service {
             return;
         }
         if (playMode == MODE_SHUFFLE && size > 1) {
-            int next = random.nextInt(size);
-            if (next == currentIndex) next = (next + 1) % size;
+            int next = nextShuffleIndex;
+            if (next < 0 || next >= size || next == currentIndex) {
+                next = random.nextInt(size);
+                if (next == currentIndex) next = (next + 1) % size;
+            }
+            nextShuffleIndex = -1;
             playAt(next);
             return;
         }
@@ -494,6 +629,15 @@ public class MusicPlaybackService extends Service {
         }
         if (mediaSession != null) mediaSession.release();
         if (player != null) player.release();
+        prefetchGeneration.incrementAndGet();
+        CacheWriter w = activeCacheWriter;
+        if (w != null) {
+            try { w.cancel(); } catch (Exception ignored) {}
+        }
+        prefetchExecutor.shutdownNow();
+        if (musicCache != null) {
+            try { musicCache.release(); } catch (Exception ignored) {}
+        }
         super.onDestroy();
     }
 
