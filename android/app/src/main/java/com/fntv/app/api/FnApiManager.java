@@ -15,6 +15,7 @@ public class FnApiManager {
     private final AuthInterceptor authInterceptor;
     private OkHttpClient okHttpClient; // 供 API 和图片使用
     private OkHttpClient streamClient; // 专供视频流使用（独立连接池）
+    private String baseUrl = "";
     private static final HostnameVerifier TRUST_ALL_HOSTS = (hostname, session) -> true;
 
     private FnApiManager() {
@@ -118,6 +119,7 @@ public class FnApiManager {
         if (vIndex != -1) {
             effectiveBaseUrl = effectiveBaseUrl.substring(0, vIndex);
         }
+        this.baseUrl = effectiveBaseUrl;
 
         okHttpClient = buildClient(false);
         streamClient = buildClient(true);
@@ -134,6 +136,7 @@ public class FnApiManager {
     public String getToken() { return authInterceptor.getToken(); }
     public void setReferer(String referer) { authInterceptor.setReferer(referer); }
     public FnApiService getApi() { return apiService; }
+    public String getBaseUrl() { return baseUrl; }
 
     /** 获取 OkHttpClient（API/图片） */
     public OkHttpClient getClient() { return okHttpClient; }

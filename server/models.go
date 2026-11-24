@@ -4,6 +4,7 @@ package main
 const (
 	ModeMovieTV = "movie_tv"
 	ModeFolder  = "folder"
+	ModeMusic   = "music"
 )
 
 type User struct {
@@ -58,6 +59,8 @@ type MediaItem struct {
 	Title         string         `json:"title"`
 	OriginalTitle string         `json:"original_title,omitempty"`
 	TvTitle       string         `json:"tv_title,omitempty"`
+	Artist        string         `json:"artist,omitempty"`
+	Album         string         `json:"album,omitempty"`
 	Type          string         `json:"type"` // "Directory", "Video", "Audio", "Movie", "TV", "Episode"
 	Category      string         `json:"category,omitempty"`
 	FilePath      string         `json:"file_path"`
@@ -139,6 +142,8 @@ type PlayListItemDTO struct {
 	ParentGuid    string  `json:"parent_guid,omitempty"`
 	Title         string  `json:"title"`
 	TvTitle       string  `json:"tv_title,omitempty"`
+	Artist        string  `json:"artist,omitempty"`
+	Album         string  `json:"album,omitempty"`
 	Type          string  `json:"type"`
 	Category      string  `json:"category,omitempty"`
 	Poster        string  `json:"poster,omitempty"`

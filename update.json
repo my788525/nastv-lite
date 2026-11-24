@@ -1,17 +1,17 @@
 {
   "server": {
-    "versionCode": 11,
-    "versionName": "1.1.0",
-    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.1.0/nastv-server-linux-amd64",
-    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.1.0/nastv-server-windows-amd64.exe",
-    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.1.0/nastv-lite-x86_64-v1.1.0.fpk",
-    "changelog": "NASTV Lite 服务端 v1.1.0：\n1. 新增媒体库「文件共享」属性开关（allow_download）：普通媒体库默认关闭下载，仅开启「文件共享」的媒体库支持在客户端下载文件，并在服务端对 /v/api/v1/files/* 与 Web 播放器进行双重拦截。"
+    "versionCode": 12,
+    "versionName": "1.2.0",
+    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.2.0/nastv-server-linux-amd64",
+    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.2.0/nastv-server-windows-amd64.exe",
+    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.2.0/nastv-lite-x86_64-v1.2.0.fpk",
+    "changelog": "NASTV Lite 服务端 v1.2.0：\n1. 新增「🎵 音乐模式」媒体库（可替代 Navidrome）：支持歌曲列表、内嵌封面提取与 /v/api/v1/audio/lyrics 同步歌词接口（兼容外挂 .lrc/.txt 与内嵌歌词标签）。\n2. Web 播放器新增音乐舞台与实时滚动同步歌词。"
   },
   "android": {
-    "versionCode": 6,
-    "versionName": "1.1.0",
-    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.1.0/NASTV_Lite_v1.1.0.apk",
-    "changelog": "NASTV Lite 客户端 v1.1.0（兼容 Android 4.4+）：\n1. 同步服务端媒体库「文件共享」属性字段（allow_download），配合服务端禁止普通媒体库下载。",
+    "versionCode": 7,
+    "versionName": "1.2.0",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.2.0/NASTV_Lite_v1.2.0.apk",
+    "changelog": "NASTV Lite 客户端 v1.2.0（兼容 Android 4.4+）：\n1. 整合音乐播放器模式：支持后台播放（前台通知栏控制、音频焦点避让、蓝牙/方向盘 MediaSession 按键）、专辑封面与同步滚动 LRC 歌词。\n2. 新增 NavMusic 风格「悬浮歌词」多档位可拖拽浮窗（纯歌词悬浮条 / 迷你控制 / 标准封面浮窗，支持位置记忆与防误触锁定）。",
     "forceUpdate": false
   }
 }

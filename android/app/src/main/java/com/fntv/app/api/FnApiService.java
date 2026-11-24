@@ -86,4 +86,8 @@ public interface FnApiService {
     // ========== 字幕 ==========
     @GET("api/v1/subtitle/dl/{id}")
     Call<ResponseBody> downloadSubtitle(@Path("id") String id);
+
+    // ========== 音频歌词 ==========
+    @GET("api/v1/audio/lyrics")
+    Call<ApiResponse<AudioLyricsResponse>> getAudioLyrics(@Query("guid") String guid);
 }

@@ -1429,17 +1429,44 @@ public class HomeActivity extends AppCompatActivity {
             bar.addView(sp5);
 
             String curMode = getEffectiveLibMode(rootLibId);
+            String serverMode = "movie_tv";
+            for (MediaDbItem l : mediaLibraries) {
+                if (l.guid != null && l.guid.equals(rootLibId) && l.mode != null) {
+                    serverMode = l.mode;
+                    break;
+                }
+            }
             Button libModeBtn = new Button(this);
             libModeBtn.setLayoutParams(new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, (int)(38 * getResources().getDisplayMetrics().density)));
             libModeBtn.setBackgroundResource(R.drawable.bg_btn_primary);
-            libModeBtn.setText("folder".equals(curMode) ? "🎬 海报墙模式" : "📁 文件夹模式");
+            libModeBtn.setText("folder".equals(curMode)
+                    ? ("music".equalsIgnoreCase(serverMode) ? "🎵 音乐模式" : "🎬 海报墙模式")
+                    : "📁 文件夹模式");
             libModeBtn.setTextColor(0xFF38BDF8);
             libModeBtn.setTextSize(12);
             libModeBtn.setFocusable(true);
             libModeBtn.setPadding(16, 0, 16, 0);
             libModeBtn.setOnClickListener(v -> toggleCurrentLibMode(rootLibId));
             bar.addView(libModeBtn);
+        }
+
+        if (MusicPlaybackService.getInstance() != null && MusicPlaybackService.getInstance().getCurrentItem() != null) {
+            View spM = new View(this);
+            spM.setLayoutParams(new LinearLayout.LayoutParams(12, 1));
+            bar.addView(spM);
+
+            Button nowMusicBtn = new Button(this);
+            nowMusicBtn.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, (int)(38 * getResources().getDisplayMetrics().density)));
+            nowMusicBtn.setBackgroundResource(R.drawable.bg_btn_primary);
+            nowMusicBtn.setText("🎵 正在播放");
+            nowMusicBtn.setTextColor(0xFF34D399);
+            nowMusicBtn.setTextSize(12);
+            nowMusicBtn.setFocusable(true);
+            nowMusicBtn.setPadding(16, 0, 16, 0);
+            nowMusicBtn.setOnClickListener(v -> startActivity(new Intent(this, MusicPlayerActivity.class)));
+            bar.addView(nowMusicBtn);
         }
 
         // 遥控器水平焦点链：保证左右导航在各按钮间丝滑连贯切换
@@ -1877,7 +1904,9 @@ public class HomeActivity extends AppCompatActivity {
         }
         for (MediaDbItem l : mediaLibraries) {
             if (l.guid != null && l.guid.equals(libGuid)) {
-                return "folder".equalsIgnoreCase(l.mode) ? "folder" : "movie_tv";
+                if ("folder".equalsIgnoreCase(l.mode)) return "folder";
+                if ("music".equalsIgnoreCase(l.mode)) return "music";
+                return "movie_tv";
             }
         }
         return "movie_tv";
@@ -1885,7 +1914,15 @@ public class HomeActivity extends AppCompatActivity {
 
     private void toggleCurrentLibMode(String libGuid) {
         String cur = getEffectiveLibMode(libGuid);
-        String next = "folder".equals(cur) ? "movie_tv" : "folder";
+        String serverMode = "movie_tv";
+        for (MediaDbItem l : mediaLibraries) {
+            if (l.guid != null && l.guid.equals(libGuid) && l.mode != null) {
+                serverMode = l.mode;
+                break;
+            }
+        }
+        String nonFolder = "music".equalsIgnoreCase(serverMode) ? "music" : "movie_tv";
+        String next = "folder".equals(cur) ? nonFolder : "folder";
         libModeOverrides.put(libGuid, next);
         prefs.edit()
                 .putString("lib_mode_" + libGuid, next)
@@ -1935,6 +1972,42 @@ public class HomeActivity extends AppCompatActivity {
 
     private void launchPlayer(String guid, String title, String tvTitle, int epNum,
                               String poster, String cat, long ts, long dur, String parentGuid, boolean forceSingle) {
+        boolean isAudioItem = "Audio".equalsIgnoreCase(cat) || "Music".equalsIgnoreCase(cat);
+        if (!isAudioItem && savedBrowseList != null) {
+            for (PlayListItem pli : savedBrowseList) {
+                if (pli != null && guid != null && guid.equals(pli.guid) && "Audio".equalsIgnoreCase(pli.type)) {
+                    isAudioItem = true;
+                    break;
+                }
+            }
+        }
+        if (isAudioItem) {
+            List<PlayListItem> audioQueue = new ArrayList<>();
+            int audioStartIdx = 0;
+            if (!forceSingle && savedBrowseList != null) {
+                for (PlayListItem pli : savedBrowseList) {
+                    if (pli != null && "Audio".equalsIgnoreCase(pli.type)) {
+                        if (guid != null && guid.equals(pli.guid)) audioStartIdx = audioQueue.size();
+                        audioQueue.add(pli);
+                    }
+                }
+            }
+            if (audioQueue.isEmpty()) {
+                PlayListItem single = new PlayListItem();
+                single.guid = guid;
+                single.title = title;
+                single.type = "Audio";
+                single.poster = poster;
+                single.duration = dur;
+                single.parentGuid = parentGuid;
+                audioQueue.add(single);
+                audioStartIdx = 0;
+            }
+            MusicPlaybackService.startQueue(this, audioQueue, audioStartIdx);
+            startActivity(new Intent(this, MusicPlayerActivity.class));
+            return;
+        }
+
         // 自动续播对10分钟(<600s)以下视频不生效，避免MV类视频从末尾几秒开始播
         if (dur > 0 && dur < 600) {
             ts = 0;
@@ -2212,6 +2285,21 @@ public class HomeActivity extends AppCompatActivity {
         PlaylistHolder.setPlaylist(finalTitle, playableList);
 
         PlayListItem first = playableList.get(startIndex);
+        if ("Audio".equalsIgnoreCase(first.type)) {
+            List<PlayListItem> audioList = new ArrayList<>();
+            int audioIdx = 0;
+            for (PlayListItem pli : playableList) {
+                if ("Audio".equalsIgnoreCase(pli.type)) {
+                    if (first.guid != null && first.guid.equals(pli.guid)) audioIdx = audioList.size();
+                    audioList.add(pli);
+                }
+            }
+            if (!audioList.isEmpty()) {
+                MusicPlaybackService.startQueue(this, audioList, audioIdx);
+                startActivity(new Intent(this, MusicPlayerActivity.class));
+                return;
+            }
+        }
         long ts = (targetTs > 0) ? targetTs : first.ts;
         if (first.duration > 0 && first.duration < 600) {
             ts = 0;

@@ -95,8 +95,16 @@
   </header>
 
   <main class="main">
-    <!-- Built-in Web Video Player -->
+    <!-- Built-in Web Video / Music Player -->
     <div id="playerSection" class="player-wrap hidden">
+      <div id="musicStage" class="hidden" style="display:flex;gap:18px;padding:18px;align-items:center;flex-wrap:wrap;background:linear-gradient(135deg,#0f172a,#1e293b)">
+        <div id="musicCoverWrap" style="width:140px;height:140px;border-radius:12px;overflow:hidden;background:#0b1120;display:flex;align-items:center;justify-content:center;font-size:48px;flex-shrink:0">🎵</div>
+        <div style="flex:1;min-width:220px">
+          <div id="musicMetaTitle" style="font-size:18px;font-weight:700;margin-bottom:4px">-</div>
+          <div id="musicMetaSub" style="font-size:13px;color:var(--muted);margin-bottom:10px"></div>
+          <div id="musicLyricsBox" style="height:126px;overflow-y:auto;font-size:14px;line-height:1.9;color:var(--muted);padding-right:6px">暂无歌词</div>
+        </div>
+      </div>
       <video id="videoEl" controls autoplay playsinline></video>
       <div class="player-bar">
         <div>
@@ -247,10 +255,10 @@ async function renderHome() {
     const effM = getRememberedLibMode(l);
     return `
     <div class="media-card" onclick="openLibrary('${l.guid}')">
-      <div class="poster">${effM === 'folder' ? '📁' : '🎬'}</div>
+      <div class="poster">${effM === 'folder' ? '📁' : (effM === 'music' ? '🎵' : '🎬')}</div>
       <div class="card-body">
         <div class="card-title">${esc(l.title)}</div>
-        <div class="card-sub">${effM === 'folder' ? '纯文件夹模式' : '影视剧模式'}${l.allow_download ? ' · 📂 文件共享' : ''} · ${l.count} 项</div>
+        <div class="card-sub">${effM === 'folder' ? '纯文件夹模式' : (effM === 'music' ? '音乐模式' : '影视剧模式')}${l.allow_download ? ' · 📂 文件共享' : ''} · ${l.count} 项</div>
       </div>
     </div>
   `;
@@ -265,10 +273,10 @@ function renderLibs() {
     const effM = getRememberedLibMode(l);
     return `
     <div class="media-card" onclick="openLibrary('${l.guid}')">
-      <div class="poster">${effM === 'folder' ? '📁' : '🎬'}</div>
+      <div class="poster">${effM === 'folder' ? '📁' : (effM === 'music' ? '🎵' : '🎬')}</div>
       <div class="card-body">
         <div class="card-title">${esc(l.title)}</div>
-        <div class="card-sub">${effM === 'folder' ? '纯文件夹模式' : '影视剧模式'}${l.allow_download ? ' · 📂 文件共享(可下载)' : ''} · ${l.count} 项</div>
+        <div class="card-sub">${effM === 'folder' ? '纯文件夹模式' : (effM === 'music' ? '音乐模式' : '影视剧模式')}${l.allow_download ? ' · 📂 文件共享(可下载)' : ''} · ${l.count} 项</div>
       </div>
     </div>
   `;
@@ -285,7 +293,9 @@ async function openLibrary(libGuid) {
 async function toggleLibViewMode() {
   if (!navStack.length) return;
   const root = navStack[0];
-  const nextMode = root.mode === 'folder' ? 'movie_tv' : 'folder';
+  const lib = libs.find(x => x.guid === root.libGuid);
+  const nonFolderMode = (lib && lib.mode === 'music') ? 'music' : 'movie_tv';
+  const nextMode = root.mode === 'folder' ? nonFolderMode : 'folder';
   saveRememberedLibMode(root.libGuid, nextMode);
   navStack = [{ guid: root.libGuid, libGuid: root.libGuid, title: root.title, mode: nextMode, allowDownload: !!root.allowDownload }];
   await loadNavTop();
@@ -315,10 +325,11 @@ async function loadNavTop() {
   const items = sortBrowseItems(rawItems, sortBy, sortOrder);
   window._curListItems = items;
 
-  const toggleBtnLabel = top.mode === 'folder' ? '🎬 切换海报墙模式' : '📁 切换文件夹模式';
+  const libObj = libs.find(x => x.guid === (navStack[0] && navStack[0].libGuid));
+  const toggleBtnLabel = top.mode === 'folder' ? ((libObj && libObj.mode === 'music') ? '🎵 切换音乐列表模式' : '🎬 切换海报墙模式') : '📁 切换文件夹模式';
   const breadcrumb = navStack.map(x => esc(x.title)).join(' / ');
   let html = `<div class="section-title">
-    <span>${top.mode === 'folder' ? '📁' : '🎬'} ${breadcrumb} (${items.length})</span>
+    <span>${top.mode === 'folder' ? '📁' : (top.mode === 'music' ? '🎵' : '🎬')} ${breadcrumb} (${items.length})</span>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <select id="webSortBy" onchange="onWebSortChange()">
         <option value="zh_name" ${sortBy === 'zh_name' ? 'selected' : ''}>🔤 中文排序</option>
@@ -333,8 +344,8 @@ async function loadNavTop() {
     </div>
   </div>`;
 
-  if (top.mode === 'folder') {
-    // Pure Folder Mode: clean rows with Play + Download buttons!
+  if (top.mode === 'folder' || top.mode === 'music') {
+    // Pure Folder / Music Mode: clean rows with Play + conditional Download buttons!
     html += items.map((it, idx) => {
       const isDir = it.type === 'Directory';
       const dlUrl = `/v/api/v1/media/range/${it.guid}?token=${encodeURIComponent(token)}`;
@@ -427,6 +438,29 @@ async function startPlayItem(it) {
     dl.classList.add('hidden');
   }
 
+  const isAudio = it.type === 'Audio' || it.category === 'Music';
+  const musicStage = document.getElementById('musicStage');
+  const videoEl = document.getElementById('videoEl');
+  window._lrcLines = [];
+  window._lrcLastIdx = -2;
+  if (isAudio) {
+    musicStage.classList.remove('hidden');
+    musicStage.style.display = 'flex';
+    videoEl.style.height = '48px';
+    videoEl.style.maxHeight = '48px';
+    document.getElementById('musicMetaTitle').innerText = it.title || '-';
+    document.getElementById('musicMetaSub').innerText = [it.artist, it.album].filter(Boolean).join(' · ') || '正在加载歌曲信息...';
+    const coverWrap = document.getElementById('musicCoverWrap');
+    coverWrap.innerHTML = `<img src="/v/api/v1/img/${it.guid}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='🎵'">`;
+    document.getElementById('musicLyricsBox').innerHTML = '<span style="color:var(--muted)">正在加载歌词...</span>';
+    loadWebLyrics(it);
+  } else {
+    musicStage.classList.add('hidden');
+    musicStage.style.display = 'none';
+    videoEl.style.height = '';
+    videoEl.style.maxHeight = '68vh';
+  }
+
   // Probe & fetch saved ts
   try {
     const info = await api('/v/api/v1/play/info', { method: 'POST', body: { item_guid: it.guid } });
@@ -476,6 +510,7 @@ function loadStream(it, q, seekSec) {
   }
 
   v.onended = () => playNextInQueue();
+  v.ontimeupdate = () => syncWebLyrics(v.currentTime || 0);
   saveTimer = setInterval(() => {
     if (v.paused || !curPlayingItem) return;
     const dur = Math.floor(v.duration || 0);
@@ -507,6 +542,92 @@ function playNextInQueue() {
   } else if (playQueue.length > 0) {
     playIdx = 0;
     startPlayItem(playQueue[playIdx]);
+  }
+}
+
+function parseWebLrc(raw) {
+  if (!raw) return [];
+  const lines = [];
+  let offsetSec = 0;
+  const timeRe = /\[(?:(\d{1,3}):)?(\d{1,2}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
+  const offRe = /\[offset:\s*([+-]?\d+(?:\.\d+)?)\s*\]/i;
+  for (const line of raw.split(/\r?\n/)) {
+    const om = offRe.exec(line);
+    if (om) {
+      const val = parseFloat(om[1]) || 0;
+      offsetSec = om[1].includes('.') ? val : val / 1000;
+      continue;
+    }
+    const tags = [...line.matchAll(timeRe)];
+    if (!tags.length) continue;
+    const last = tags[tags.length - 1];
+    const txt = line.slice(last.index + last[0].length).trim();
+    for (const m of tags) {
+      const h = parseInt(m[1] || '0', 10);
+      const min = parseInt(m[2] || '0', 10);
+      const sec = parseInt(m[3] || '0', 10);
+      const fracStr = m[4] || '';
+      let frac = 0;
+      if (fracStr.length === 1) frac = parseInt(fracStr, 10) / 10;
+      else if (fracStr.length === 2) frac = parseInt(fracStr, 10) / 100;
+      else if (fracStr.length >= 3) frac = parseInt(fracStr.slice(0, 3), 10) / 1000;
+      lines.push({ t: h * 3600 + min * 60 + sec + frac + offsetSec, text: txt || '♪' });
+    }
+  }
+  lines.sort((a, b) => a.t - b.t);
+  return lines;
+}
+
+async function loadWebLyrics(it) {
+  const box = document.getElementById('musicLyricsBox');
+  try {
+    const r = await api('/v/api/v1/audio/lyrics?guid=' + encodeURIComponent(it.guid));
+    if (!curPlayingItem || curPlayingItem.guid !== it.guid) return;
+    const d = r.data || {};
+    if (d.title) document.getElementById('musicMetaTitle').innerText = d.title;
+    const sub = [d.artist, d.album].filter(Boolean).join(' · ');
+    document.getElementById('musicMetaSub').innerText = sub || 'NAS 音乐';
+    const raw = (d.lrc || '').trim();
+    if (!raw) {
+      window._lrcLines = [];
+      box.innerHTML = '<div style="color:var(--muted)">暂无歌词（可在同目录放置同名 .lrc 文件或内嵌歌词）</div>';
+      return;
+    }
+    const parsed = parseWebLrc(raw);
+    if (parsed.length > 0) {
+      window._lrcLines = parsed;
+      window._lrcLastIdx = -1;
+      box.innerHTML = parsed.map((l, i) => `<div id="lrcLine_${i}" style="transition:color .2s">${esc(l.text)}</div>`).join('');
+    } else {
+      window._lrcLines = [];
+      box.innerHTML = raw.split(/\r?\n/).map(l => `<div>${esc(l)}</div>`).join('');
+    }
+  } catch (e) {
+    box.innerHTML = '<div style="color:var(--muted)">歌词加载失败</div>';
+  }
+}
+
+function syncWebLyrics(sec) {
+  const lines = window._lrcLines;
+  if (!lines || !lines.length) return;
+  let idx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].t <= sec) idx = i;
+    else break;
+  }
+  if (idx === window._lrcLastIdx) return;
+  window._lrcLastIdx = idx;
+  for (let i = 0; i < lines.length; i++) {
+    const el = document.getElementById('lrcLine_' + i);
+    if (!el) continue;
+    if (i === idx) {
+      el.style.color = '#38bdf8';
+      el.style.fontWeight = '700';
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } else {
+      el.style.color = 'var(--muted)';
+      el.style.fontWeight = '400';
+    }
   }
 }
 

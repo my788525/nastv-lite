@@ -166,7 +166,27 @@ func (t *Transcoder) EnsureThumbnail(item *MediaItem, enabled bool) string {
 			return item.PosterPath
 		}
 	}
-	if !enabled || t.ffmpegPath == "" || item.FilePath == "" || item.Type == "Directory" || item.Type == "TV" || item.Type == "Audio" {
+	if item.Type == "Audio" {
+		audThumb := filepath.Join(t.thumbDir, "aud_"+item.Guid+".jpg")
+		if _, err := os.Stat(audThumb); err == nil {
+			return audThumb
+		}
+		noMarker := filepath.Join(t.thumbDir, "aud_"+item.Guid+".none")
+		if _, err := os.Stat(noMarker); err == nil {
+			return ""
+		}
+		if t.ffmpegPath != "" && item.FilePath != "" {
+			cmd := exec.Command(t.ffmpegPath, "-y", "-v", "quiet", "-i", item.FilePath, "-an", "-vcodec", "mjpeg", "-frames:v", "1", audThumb)
+			if err := cmd.Run(); err == nil {
+				if st, err2 := os.Stat(audThumb); err2 == nil && st.Size() > 0 {
+					return audThumb
+				}
+			}
+			_ = os.WriteFile(noMarker, []byte("0"), 0644)
+		}
+		return ""
+	}
+	if !enabled || t.ffmpegPath == "" || item.FilePath == "" || item.Type == "Directory" || item.Type == "TV" {
 		return ""
 	}
 	thumbPath := filepath.Join(t.thumbDir, item.Guid+".jpg")

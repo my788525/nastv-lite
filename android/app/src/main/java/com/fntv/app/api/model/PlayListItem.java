@@ -11,7 +11,9 @@ public class PlayListItem {
 
     public String guid;
     public String title;
-    public String type;           // "Episode", "Video", "Folder" 等
+    public String type;           // "Episode", "Video", "Folder", "Audio" 等
+    public String artist;
+    public String album;
 
     public String poster;
 

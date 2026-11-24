@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -126,6 +128,8 @@ func (app *App) handleMediaDbList(w http.ResponseWriter, r *http.Request) {
 		if cat == "" {
 			if lib.Mode == ModeFolder {
 				cat = "Folder"
+			} else if lib.Mode == ModeMusic {
+				cat = "Music"
 			} else {
 				cat = "Movie"
 			}
@@ -148,7 +152,7 @@ func (app *App) handleMediaDbList(w http.ResponseWriter, r *http.Request) {
 
 func (app *App) toItemDTO(userID string, it *MediaItem, libMode string) PlayListItemDTO {
 	poster := ""
-	if it.PosterPath != "" || (it.Type != "Directory" && it.Type != "TV" && it.Type != "Audio") {
+	if it.PosterPath != "" || (it.Type != "Directory" && it.Type != "TV") {
 		poster = "/v/api/v1/img/" + it.Guid
 	}
 	allowDl := false
@@ -160,6 +164,8 @@ func (app *App) toItemDTO(userID string, it *MediaItem, libMode string) PlayList
 		ParentGuid:    it.ParentGuid,
 		Title:         it.Title,
 		TvTitle:       it.TvTitle,
+		Artist:        it.Artist,
+		Album:         it.Album,
 		Type:          it.Type,
 		Category:      it.Category,
 		Poster:        poster,
@@ -202,11 +208,15 @@ func (app *App) handleItemList(w http.ResponseWriter, r *http.Request) {
 	hasTargetModeItems := false
 	if isLibRoot {
 		effMode = libObj.Mode
-		if req.ViewMode == ModeFolder || req.ViewMode == ModeMovieTV {
+		if req.ViewMode == ModeFolder || req.ViewMode == ModeMovieTV || req.ViewMode == ModeMusic {
 			effMode = req.ViewMode
 		}
+		targetItemView := effMode
+		if targetItemView == ModeMusic {
+			targetItemView = ModeFolder
+		}
 		for _, it := range app.store.data.Items {
-			if it.LibID == targetParent && it.ViewMode == effMode {
+			if it.LibID == targetParent && it.ViewMode == targetItemView {
 				hasTargetModeItems = true
 				break
 			}
@@ -225,16 +235,23 @@ func (app *App) handleItemList(w http.ResponseWriter, r *http.Request) {
 		if !u.CanAccessLibrary(it.LibID) {
 			continue
 		}
-		if targetParent != "" && it.ParentGuid != targetParent {
-			continue
-		}
 		libMode := ModeMovieTV
 		if lib, ok := app.store.data.Libraries[it.LibID]; ok {
 			libMode = lib.Mode
 		}
 		itemMode := libMode
-		if req.ViewMode == ModeFolder || req.ViewMode == ModeMovieTV {
+		if req.ViewMode == ModeFolder || req.ViewMode == ModeMovieTV || req.ViewMode == ModeMusic {
 			itemMode = req.ViewMode
+		}
+		if isLibRoot && itemMode == ModeMusic {
+			if it.LibID != targetParent || it.ViewMode != ModeFolder || it.Type != "Audio" {
+				continue
+			}
+			list = append(list, app.toItemDTO(u.ID, it, ModeMusic))
+			continue
+		}
+		if targetParent != "" && it.ParentGuid != targetParent {
+			continue
 		}
 		if isLibRoot && it.ViewMode != itemMode {
 			continue
@@ -584,10 +601,14 @@ func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 		if lib, ok := app.store.data.Libraries[it.LibID]; ok {
 			mode = lib.Mode
 		}
-		if it.ViewMode != "" && it.ViewMode != mode {
+		searchView := mode
+		if searchView == ModeMusic {
+			searchView = ModeFolder
+		}
+		if it.ViewMode != "" && it.ViewMode != searchView {
 			continue
 		}
-		if strings.Contains(strings.ToLower(it.Title), q) || strings.Contains(strings.ToLower(it.TvTitle), q) {
+		if strings.Contains(strings.ToLower(it.Title), q) || strings.Contains(strings.ToLower(it.TvTitle), q) || strings.Contains(strings.ToLower(it.Artist), q) {
 			res = append(res, app.toItemDTO(u.ID, it, mode))
 			if len(res) >= 100 {
 				break
@@ -599,4 +620,106 @@ func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 		res = []PlayListItemDTO{}
 	}
 	okResp(w, res)
+}
+
+func (app *App) handleAudioLyrics(w http.ResponseWriter, r *http.Request) {
+	u := app.requireUser(w, r)
+	if u == nil {
+		return
+	}
+	guid := strings.TrimSpace(r.URL.Query().Get("guid"))
+	if guid == "" {
+		errResp(w, 400, "missing guid")
+		return
+	}
+	it, ok := app.store.GetItem(guid)
+	if !ok || !u.CanAccessLibrary(it.LibID) {
+		errResp(w, 404, "item not found")
+		return
+	}
+
+	title := it.Title
+	artist := it.Artist
+	album := it.Album
+	duration := it.Duration
+	lrc := ""
+
+	// 1. Check sidecar .lrc / .txt next to audio file
+	if it.FilePath != "" {
+		base := strings.TrimSuffix(it.FilePath, filepath.Ext(it.FilePath))
+		for _, ext := range []string{".lrc", ".LRC", ".txt"} {
+			if raw, err := os.ReadFile(base + ext); err == nil && len(raw) > 0 {
+				s := strings.TrimPrefix(string(raw), "\xef\xbb\xbf")
+				lrc = strings.TrimSpace(s)
+				break
+			}
+		}
+	}
+
+	// 2. Read embedded audio tags (artist/album/title/lyrics) via ffprobe if available
+	if app.transcoder.ffprobePath != "" && it.FilePath != "" {
+		cmd := exec.Command(app.transcoder.ffprobePath, "-v", "quiet", "-print_format", "json", "-show_format", it.FilePath)
+		if out, err := cmd.Output(); err == nil {
+			var probe struct {
+				Format struct {
+					Duration string            `json:"duration"`
+					Tags     map[string]string `json:"tags"`
+				} `json:"format"`
+			}
+			if json.Unmarshal(out, &probe) == nil {
+				if duration <= 0 && probe.Format.Duration != "" {
+					if d, err2 := strconv.ParseFloat(probe.Format.Duration, 64); err2 == nil && d > 0 {
+						duration = int64(d)
+					}
+				}
+				for k, v := range probe.Format.Tags {
+					kl := strings.ToLower(k)
+					v = strings.TrimSpace(v)
+					if v == "" {
+						continue
+					}
+					switch {
+					case kl == "title":
+						title = v
+					case kl == "artist" || kl == "album_artist":
+						if artist == "" || kl == "artist" {
+							artist = v
+						}
+					case kl == "album":
+						album = v
+					case strings.Contains(kl, "lyric") || kl == "uslt" || kl == "sylt":
+						if lrc == "" {
+							lrc = v
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Cache artist/album/duration in memory if newly discovered
+	if artist != "" || album != "" || duration > 0 {
+		app.store.mu.Lock()
+		if cur, exists := app.store.data.Items[guid]; exists {
+			if cur.Artist == "" && artist != "" {
+				cur.Artist = artist
+			}
+			if cur.Album == "" && album != "" {
+				cur.Album = album
+			}
+			if cur.Duration <= 0 && duration > 0 {
+				cur.Duration = duration
+			}
+		}
+		app.store.mu.Unlock()
+	}
+
+	okResp(w, map[string]interface{}{
+		"guid":     guid,
+		"title":    title,
+		"artist":   artist,
+		"album":    album,
+		"duration": duration,
+		"lrc":      lrc,
+	})
 }

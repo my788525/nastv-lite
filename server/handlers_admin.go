@@ -225,12 +225,14 @@ func (app *App) handleAdminLibraries(w http.ResponseWriter, r *http.Request) {
 			errResp(w, 400, "媒体库名称和路径不能为空")
 			return
 		}
-		if req.Mode != ModeFolder {
+		if req.Mode != ModeFolder && req.Mode != ModeMusic {
 			req.Mode = ModeMovieTV
 		}
 		if req.Category == "" {
 			if req.Mode == ModeFolder {
 				req.Category = "Folder"
+			} else if req.Mode == ModeMusic {
+				req.Category = "Music"
 			} else {
 				req.Category = "Movie"
 			}

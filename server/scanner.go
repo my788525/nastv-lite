@@ -171,14 +171,14 @@ func ScanLibrary(s *Store, libID string) (int, error) {
 	for k, v := range folderItems {
 		v.ViewMode = ModeFolder
 		newItems[k] = v
-		if lib.Mode == ModeFolder {
+		if lib.Mode == ModeFolder || lib.Mode == ModeMusic {
 			defaultCount++
 		}
 	}
 	for k, v := range movieItems {
 		v.ViewMode = ModeMovieTV
 		newItems[k] = v
-		if lib.Mode != ModeFolder {
+		if lib.Mode != ModeFolder && lib.Mode != ModeMusic {
 			defaultCount++
 		}
 	}

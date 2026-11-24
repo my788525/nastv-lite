@@ -308,6 +308,7 @@
       <select id="libMode">
         <option value="folder">📁 纯文件夹模式（不刮削不聚合，1:1还原目录树，适合MV/短片/教育）</option>
         <option value="movie_tv">🎬 影视剧模式（自动识别剧集 S01E01 与 NFO 海报墙）</option>
+        <option value="music">🎵 音乐模式（替代 Navidrome：歌曲列表、专辑封面与同步歌词）</option>
       </select>
     </div>
     <div class="form-group">
@@ -530,7 +531,7 @@ async function loadLibs() {
   document.getElementById('libTable').innerHTML = cachedLibs.map(l => `
     <tr>
       <td><b>${l.name}</b></td>
-      <td>${l.mode === 'folder' ? '<span class="badge green">📁 纯文件夹</span>' : '<span class="badge">🎬 影视剧</span>'}${l.allow_download ? ' <span class="badge orange">📂 文件共享</span>' : ''}</td>
+      <td>${l.mode === 'folder' ? '<span class="badge green">📁 纯文件夹</span>' : (l.mode === 'music' ? '<span class="badge green">🎵 音乐模式</span>' : '<span class="badge">🎬 影视剧</span>')}${l.allow_download ? ' <span class="badge orange">📂 文件共享</span>' : ''}</td>
       <td style="font-size:12px;color:var(--muted)">${(l.paths || []).join(', ')}</td>
       <td>${l.item_count || 0}</td>
       <td class="row-actions">
