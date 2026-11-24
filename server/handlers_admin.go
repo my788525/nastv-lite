@@ -469,3 +469,123 @@ func (app *App) handleAdminLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	okResp(w, map[string]string{"logs": strings.Join(lines, "\n")})
 }
+
+func (app *App) handleAdminDDNS(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		app.store.mu.RLock()
+		var list []*DDNSConfig
+		for _, c := range app.store.data.DDNSConfigs {
+			cp := *c
+			if cp.APIKey != "" && len(cp.APIKey) > 6 {
+				cp.APIKey = cp.APIKey[:3] + "****" + cp.APIKey[len(cp.APIKey)-3:]
+			}
+			cp.APISecret = ""
+			list = append(list, &cp)
+		}
+		app.store.mu.RUnlock()
+		if list == nil {
+			list = []*DDNSConfig{}
+		}
+		okResp(w, list)
+
+	case http.MethodPost:
+		var req DDNSConfig
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			errResp(w, 400, "请求格式错误")
+			return
+		}
+		if strings.TrimSpace(req.Domain) == "" && req.Provider != "custom" {
+			errResp(w, 400, "域名不能为空")
+			return
+		}
+		if req.IntervalMin <= 0 {
+			req.IntervalMin = 5
+		}
+		if req.IPMode == "" {
+			req.IPMode = "ipv6"
+		}
+		app.store.mu.Lock()
+		var target *DDNSConfig
+		if req.ID != "" {
+			if ex, ok := app.store.data.DDNSConfigs[req.ID]; ok {
+				ex.Name = req.Name
+				ex.Provider = req.Provider
+				ex.Enabled = req.Enabled
+				ex.Domain = req.Domain
+				ex.IPMode = req.IPMode
+				ex.IntervalMin = req.IntervalMin
+				if req.APIKey != "" && !strings.Contains(req.APIKey, "****") {
+					ex.APIKey = req.APIKey
+				}
+				if req.APISecret != "" {
+					ex.APISecret = req.APISecret
+				}
+				ex.ZoneID = req.ZoneID
+				ex.Proxied = req.Proxied
+				ex.CustomURL = req.CustomURL
+				target = ex
+			}
+		}
+		if target == nil {
+			if req.Name == "" {
+				req.Name = req.Domain
+			}
+			req.ID = "ddns_" + randomHex(6)
+			target = &req
+			app.store.data.DDNSConfigs[target.ID] = target
+		}
+		_ = app.store.saveLocked()
+		cp := *target
+		app.store.mu.Unlock()
+
+		if cp.Enabled {
+			go RunDDNSConfig(app.store, &cp)
+		}
+		okResp(w, cp)
+
+	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		app.store.mu.Lock()
+		delete(app.store.data.DDNSConfigs, id)
+		_ = app.store.saveLocked()
+		app.store.mu.Unlock()
+		okResp(w, map[string]bool{"deleted": true})
+
+	default:
+		errResp(w, 405, "method not allowed")
+	}
+}
+
+func (app *App) handleAdminDDNSRun(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	id := r.URL.Query().Get("id")
+	app.store.mu.RLock()
+	cfg, ok := app.store.data.DDNSConfigs[id]
+	var cp DDNSConfig
+	if ok {
+		cp = *cfg
+	}
+	app.store.mu.RUnlock()
+	if !ok {
+		errResp(w, 404, "DDNS 配置不存在")
+		return
+	}
+	status := RunDDNSConfig(app.store, &cp)
+	okResp(w, map[string]string{"status": status})
+}
+
+func (app *App) handleAdminDDNSIP(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	okResp(w, map[string]string{
+		"ipv4": DetectPublicIPv4(),
+		"ipv6": DetectPublicIPv6(),
+	})
+}

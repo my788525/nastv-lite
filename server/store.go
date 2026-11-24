@@ -29,10 +29,11 @@ func NewStore(dataDir string) (*Store, error) {
 	s := &Store{
 		dataPath: filepath.Join(dataDir, "data.json"),
 		data: StoreData{
-			Users:     make(map[string]*User),
-			Libraries: make(map[string]*Library),
-			Items:     make(map[string]*MediaItem),
-			Records:   make(map[string]WatchRecord),
+			Users:       make(map[string]*User),
+			Libraries:   make(map[string]*Library),
+			Items:       make(map[string]*MediaItem),
+			Records:     make(map[string]WatchRecord),
+			DDNSConfigs: make(map[string]*DDNSConfig),
 		},
 	}
 	if err := s.load(); err != nil && !os.IsNotExist(err) {
@@ -85,6 +86,9 @@ func (s *Store) load() error {
 	}
 	if d.Records == nil {
 		d.Records = make(map[string]WatchRecord)
+	}
+	if d.DDNSConfigs == nil {
+		d.DDNSConfigs = make(map[string]*DDNSConfig)
 	}
 	s.data = d
 	return nil

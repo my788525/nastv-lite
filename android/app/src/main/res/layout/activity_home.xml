@@ -940,6 +940,77 @@ DPAD 遥控器友好
 
         </LinearLayout>
 
+        <!-- Tab 3: 文件浏览 (远程 NAS 全文件拉取/安装) -->
+        <LinearLayout
+            android:id="@+id/panelFiles"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingLeft="10dp"
+                android:paddingRight="10dp"
+                android:background="#1A1A1A">
+
+                <Button
+                    android:id="@+id/btnFilesUp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_btn_primary"
+                    android:focusable="true"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
+                    android:text="⬆ 上级"
+                    android:textColor="@color/text_white"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/tvFilesPath"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginLeft="10dp"
+                    android:layout_marginRight="10dp"
+                    android:ellipsize="start"
+                    android:singleLine="true"
+                    android:text="远程目录：根目录"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btnFilesRefresh"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_input"
+                    android:focusable="true"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
+                    android:text="🔄 刷新"
+                    android:textColor="@color/text_primary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fillViewport="true"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/filesListContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="8dp" />
+            </ScrollView>
+
+        </LinearLayout>
+
     </FrameLayout>
 
     <View
@@ -981,8 +1052,23 @@ DPAD 遥控器友好
             android:background="@drawable/selector_tab"
             android:focusable="true"
             android:nextFocusLeft="@+id/tabMovies"
-            android:nextFocusRight="@+id/tabSettings"
+            android:nextFocusRight="@+id/tabFiles"
             android:text="媒体库"
+            android:textAllCaps="false"
+            android:textColor="@color/tab_text"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/tabFiles"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_margin="3dp"
+            android:layout_weight="1"
+            android:background="@drawable/selector_tab"
+            android:focusable="true"
+            android:nextFocusLeft="@+id/tabLibrary"
+            android:nextFocusRight="@+id/tabSettings"
+            android:text="文件"
             android:textAllCaps="false"
             android:textColor="@color/tab_text"
             android:textSize="13sp" />
@@ -995,7 +1081,7 @@ DPAD 遥控器友好
             android:layout_weight="1"
             android:background="@drawable/selector_tab"
             android:focusable="true"
-            android:nextFocusLeft="@+id/tabLibrary"
+            android:nextFocusLeft="@+id/tabFiles"
             android:text="设置"
             android:textAllCaps="false"
             android:textColor="@color/tab_text"

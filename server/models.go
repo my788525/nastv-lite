@@ -82,13 +82,33 @@ type WatchRecord struct {
 	UpdatedAt int64  `json:"updated_at"`
 }
 
+type DDNSConfig struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Provider    string `json:"provider"` // "cloudflare", "alidns", "dnspod", "duckdns", "custom"
+	Enabled     bool   `json:"enabled"`
+	Domain      string `json:"domain"`
+	IPMode      string `json:"ip_mode"` // "ipv6", "ipv4", "dual"
+	IntervalMin int    `json:"interval_min"`
+	APIKey      string `json:"api_key"`    // CF Token / Aliyun KeyID / DNSPod ID / Duck Token
+	APISecret   string `json:"api_secret"` // CF Email (optional) / Aliyun Secret / DNSPod Token
+	ZoneID      string `json:"zone_id"`
+	Proxied     bool   `json:"proxied"`
+	CustomURL   string `json:"custom_url"`
+	LastIPv4    string `json:"last_ipv4"`
+	LastIPv6    string `json:"last_ipv6"`
+	LastStatus  string `json:"last_status"`
+	LastRun     int64  `json:"last_run"`
+}
+
 type StoreData struct {
-	JWTSecret string                 `json:"jwt_secret"`
-	Settings  ServerSettings         `json:"settings"`
-	Users     map[string]*User       `json:"users"`
-	Libraries map[string]*Library    `json:"libraries"`
-	Items     map[string]*MediaItem  `json:"items"`
-	Records   map[string]WatchRecord `json:"records"` // key: userID + ":" + itemGuid
+	JWTSecret   string                 `json:"jwt_secret"`
+	Settings    ServerSettings         `json:"settings"`
+	Users       map[string]*User       `json:"users"`
+	Libraries   map[string]*Library    `json:"libraries"`
+	Items       map[string]*MediaItem  `json:"items"`
+	Records     map[string]WatchRecord `json:"records"` // key: userID + ":" + itemGuid
+	DDNSConfigs map[string]*DDNSConfig `json:"ddns_configs"`
 }
 
 // ===== Client-compatible API DTOs =====

@@ -35,8 +35,9 @@ import retrofit2.Response;
 
 public class HomeActivity extends AppCompatActivity {
 
-    private Button tabMovies, tabLibrary, tabSettings;
-    private View panelMovies, panelLibrary, panelSettings;
+    private Button tabMovies, tabLibrary, tabFiles, tabSettings;
+    private View panelMovies, panelLibrary, panelFiles, panelSettings;
+    private RemoteFileBrowser remoteFileBrowser;
     private LinearLayout moviesContainer, libraryContainer;
     /** 详情页渲染目标容器：影视标签用 moviesContainer；媒体库标签内（如文件夹兜底）用 libraryContainer，
      *  避免 buildDetailPage 把详情渲染进被 GONE 的 moviesContainer 导致黑屏。 */
@@ -220,10 +221,20 @@ public class HomeActivity extends AppCompatActivity {
     private void initViews() {
         tabMovies = findViewById(R.id.tabMovies);
         tabLibrary = findViewById(R.id.tabLibrary);
+        tabFiles = findViewById(R.id.tabFiles);
         tabSettings = findViewById(R.id.tabSettings);
         panelMovies = findViewById(R.id.panelMovies);
         panelLibrary = findViewById(R.id.panelLibrary);
+        panelFiles = findViewById(R.id.panelFiles);
         panelSettings = findViewById(R.id.panelSettings);
+        remoteFileBrowser = new RemoteFileBrowser(
+                this,
+                baseUrl,
+                findViewById(R.id.filesListContainer),
+                findViewById(R.id.tvFilesPath),
+                findViewById(R.id.btnFilesUp),
+                findViewById(R.id.btnFilesRefresh)
+        );
         moviesContainer = findViewById(R.id.moviesGridContainer);
         libraryContainer = findViewById(R.id.libraryGridContainer);
         detailContainer = moviesContainer;
@@ -307,7 +318,8 @@ public class HomeActivity extends AppCompatActivity {
     private void setupTabs() {
         tabMovies.setOnClickListener(v -> switchTab(0));
         tabLibrary.setOnClickListener(v -> { switchTab(1); loadMediaLibraries(); });
-        tabSettings.setOnClickListener(v -> switchTab(2));
+        if (tabFiles != null) tabFiles.setOnClickListener(v -> switchTab(2));
+        tabSettings.setOnClickListener(v -> switchTab(3));
     }
 
 
@@ -320,14 +332,19 @@ public class HomeActivity extends AppCompatActivity {
         savedBrowseList = null; savedBrowseGuid = null;
         panelMovies.setVisibility(index == 0 ? View.VISIBLE : View.GONE);
         panelLibrary.setVisibility(index == 1 ? View.VISIBLE : View.GONE);
-        panelSettings.setVisibility(index == 2 ? View.VISIBLE : View.GONE);
+        if (panelFiles != null) panelFiles.setVisibility(index == 2 ? View.VISIBLE : View.GONE);
+        panelSettings.setVisibility(index == 3 ? View.VISIBLE : View.GONE);
         tabMovies.setSelected(index == 0);
         tabLibrary.setSelected(index == 1);
-        tabSettings.setSelected(index == 2);
-        tvSection.setText(index == 0 ? "影视" : index == 1 ? "媒体库" : "设置");
+        if (tabFiles != null) tabFiles.setSelected(index == 2);
+        tabSettings.setSelected(index == 3);
+        tvSection.setText(index == 0 ? "影视" : index == 1 ? "媒体库" : index == 2 ? "远程文件" : "设置");
         if (index == 0) tabMovies.requestFocus();
         else if (index == 1) tabLibrary.requestFocus();
-        else tabSettings.requestFocus();
+        else if (index == 2) {
+            if (tabFiles != null) tabFiles.requestFocus();
+            if (remoteFileBrowser != null) remoteFileBrowser.ensureLoaded();
+        } else tabSettings.requestFocus();
     }
 
 
@@ -3786,6 +3803,9 @@ public class HomeActivity extends AppCompatActivity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) {
+            if (currentTab == 2 && remoteFileBrowser != null && remoteFileBrowser.handleBack()) {
+                return true;
+            }
             // 搜索框有焦点 → 隐藏键盘并清除搜索
             if (etSearch.isFocused()) {
                 hideKeyboard();

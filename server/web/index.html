@@ -92,6 +92,7 @@
     <div class="nav-item active" data-tab="dash" onclick="switchTab('dash')">📊 系统概览</div>
     <div class="nav-item" data-tab="libs" onclick="switchTab('libs')">📚 媒体库管理</div>
     <div class="nav-item" data-tab="users" onclick="switchTab('users')">👥 用户与权限</div>
+    <div class="nav-item" data-tab="ddns" onclick="switchTab('ddns')">🌐 DDNS 动态域名</div>
     <div class="nav-item" data-tab="settings" onclick="switchTab('settings')">⚙️ 服务端设置</div>
     <div class="nav-item" data-tab="updates" onclick="switchTab('updates')">🔄 在线更新</div>
     <div class="sidebar-footer">
@@ -153,6 +154,27 @@
         <table>
           <thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>可访问媒体库</th><th>观看记录</th><th>操作</th></tr></thead>
           <tbody id="userTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Tab: DDNS -->
+    <section id="tab-ddns" class="tab-pane hidden">
+      <div class="page-header">
+        <div class="page-title">🌐 内置 DDNS 动态域名（支持 Cloudflare IPv6）</div>
+        <div class="row-actions">
+          <button class="sec" onclick="detectDDNSIPs()">🔍 检测公网 IPv4/IPv6</button>
+          <button onclick="openDDNSModal()">+ 添加 DDNS 任务</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="stat-label">当前检测到的公网出口 IP</div>
+        <div class="stat-val" id="ddnsIpPreview" style="margin-top:6px">点击右上角“检测公网 IPv4/IPv6”获取</div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>名称</th><th>服务商</th><th>域名</th><th>IP模式</th><th>状态 / 最近同步</th><th>操作</th></tr></thead>
+          <tbody id="ddnsTable"></tbody>
         </table>
       </div>
     </section>
@@ -311,6 +333,73 @@
   </div>
 </div>
 
+<!-- DDNS Modal -->
+<div class="modal-bg" id="ddnsModal">
+  <div class="modal">
+    <div class="card-title"><span id="ddnsModalTitle">添加 DDNS 任务</span><button class="sec" onclick="closeModal('ddnsModal')">✕</button></div>
+    <input type="hidden" id="ddnsId">
+    <div class="form-group">
+      <label>任务名称</label>
+      <input id="ddnsName" placeholder="例如：家宽 Cloudflare IPv6">
+    </div>
+    <div class="form-group">
+      <label>DDNS 服务商</label>
+      <select id="ddnsProvider" onchange="onDDNSProviderChange()">
+        <option value="cloudflare">Cloudflare (推荐 · 支持 IPv6 AAAA & IPv4 A)</option>
+        <option value="alidns">阿里云 DNS (Alidns)</option>
+        <option value="dnspod">腾讯云 DNSPod</option>
+        <option value="duckdns">DuckDNS</option>
+        <option value="custom">自定义 Webhook / URL</option>
+      </select>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>完整域名</label>
+        <input id="ddnsDomain" placeholder="例如：nas.example.com">
+      </div>
+      <div class="form-group">
+        <label>解析模式</label>
+        <select id="ddnsIpMode">
+          <option value="ipv6">仅 IPv6 (AAAA 记录，推荐)</option>
+          <option value="ipv4">仅 IPv4 (A 记录)</option>
+          <option value="dual">双栈 (同时更新 A + AAAA)</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" id="ddnsKeyGroup">
+      <label id="ddnsKeyLabel">API Token (Cloudflare 建议使用 Edit zone DNS Token)</label>
+      <input id="ddnsKey" placeholder="输入 Token 或 AccessKeyId / SecretId">
+    </div>
+    <div class="form-group" id="ddnsSecretGroup">
+      <label id="ddnsSecretLabel">Email / Secret（使用 Cloudflare API Token 时可留空）</label>
+      <input id="ddnsSecret" type="password" placeholder="阿里云 Secret / DNSPod Token / CF Global Email">
+    </div>
+    <div class="form-group" id="ddnsZoneGroup">
+      <label>Zone ID（Cloudflare 可留空自动识别）</label>
+      <input id="ddnsZone" placeholder="留空自动查询">
+    </div>
+    <div class="form-group hidden" id="ddnsCustomGroup">
+      <label>自定义请求 URL（支持 {ip} {ipv4} {ipv6} {domain} 占位符）</label>
+      <input id="ddnsCustomUrl" placeholder="https://example.com/update?host={domain}&ip={ipv6}">
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>同步间隔（分钟）</label>
+        <input id="ddnsInterval" type="number" value="5" min="1">
+      </div>
+      <div class="switch-row" style="margin-top:22px">
+        <span style="font-size:13px">启用此 DDNS</span>
+        <input type="checkbox" id="ddnsEnabled" checked>
+      </div>
+    </div>
+    <div class="switch-row" id="ddnsProxyRow">
+      <span style="font-size:13px">Cloudflare 小黄云代理（自定义端口建议关闭）</span>
+      <input type="checkbox" id="ddnsProxied">
+    </div>
+    <button style="width:100%" onclick="saveDDNS()">保存并立即同步</button>
+  </div>
+</div>
+
 <script>
 let token = localStorage.getItem('nastv_token') || '';
 let cachedLibs = [];
@@ -324,6 +413,7 @@ function switchTab(tab) {
   document.getElementById('tab-' + tab).classList.remove('hidden');
   if (tab === 'dash') loadLogs();
   if (tab === 'settings') loadSettings();
+  if (tab === 'ddns') loadDDNS();
 }
 
 async function api(url, opts = {}) {
@@ -633,6 +723,127 @@ async function applyUpdate() {
     return;
   }
   setTimeout(() => location.reload(), 3500);
+}
+
+let cachedDDNS = [];
+async function loadDDNS() {
+  const r = await api('/api/admin/ddns');
+  cachedDDNS = r.data || [];
+  document.getElementById('ddnsTable').innerHTML = cachedDDNS.map(d => `
+    <tr>
+      <td><b>${d.name || d.domain}</b></td>
+      <td><span class="badge">${d.provider}</span></td>
+      <td>${d.domain || '-'}</td>
+      <td>${d.ip_mode === 'dual' ? 'IPv4+IPv6' : (d.ip_mode === 'ipv4' ? 'IPv4' : 'IPv6 (AAAA)')}</td>
+      <td style="font-size:12px;color:var(--muted)">${d.enabled ? '🟢 启用' : '⚪ 停用'} · ${d.last_status || '尚未运行'}</td>
+      <td class="row-actions">
+        <button class="sec" onclick="runDDNS('${d.id}')">立即同步</button>
+        <button class="sec" onclick="editDDNS('${d.id}')">编辑</button>
+        <button class="danger" onclick="delDDNS('${d.id}')">删除</button>
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="6" style="color:var(--muted);text-align:center">暂无 DDNS 任务，点击右上角添加</td></tr>';
+}
+
+async function detectDDNSIPs() {
+  document.getElementById('ddnsIpPreview').innerText = '正在探测公网 IP...';
+  const r = await api('/api/admin/ddns/ip');
+  if (r.code === 0) {
+    document.getElementById('ddnsIpPreview').innerText =
+      `公网 IPv4: ${r.data.ipv4 || '无'}   |   公网 IPv6: ${r.data.ipv6 || '无'}`;
+  }
+}
+
+function onDDNSProviderChange() {
+  const p = document.getElementById('ddnsProvider').value;
+  document.getElementById('ddnsZoneGroup').classList.toggle('hidden', p !== 'cloudflare');
+  document.getElementById('ddnsProxyRow').classList.toggle('hidden', p !== 'cloudflare');
+  document.getElementById('ddnsCustomGroup').classList.toggle('hidden', p !== 'custom');
+  document.getElementById('ddnsKeyGroup').classList.toggle('hidden', p === 'custom');
+  document.getElementById('ddnsSecretGroup').classList.toggle('hidden', p === 'custom' || p === 'duckdns');
+  if (p === 'cloudflare') {
+    document.getElementById('ddnsKeyLabel').innerText = 'API Token（Cloudflare 后台创建 Edit zone DNS 令牌）';
+    document.getElementById('ddnsSecretLabel').innerText = 'Email（使用 API Token 请留空；使用 Global API Key 时填写）';
+  } else if (p === 'alidns') {
+    document.getElementById('ddnsKeyLabel').innerText = 'AccessKey ID';
+    document.getElementById('ddnsSecretLabel').innerText = 'AccessKey Secret';
+  } else if (p === 'dnspod') {
+    document.getElementById('ddnsKeyLabel').innerText = 'DNSPod API ID';
+    document.getElementById('ddnsSecretLabel').innerText = 'DNSPod API Token';
+  } else if (p === 'duckdns') {
+    document.getElementById('ddnsKeyLabel').innerText = 'DuckDNS Token';
+  }
+}
+
+function openDDNSModal() {
+  document.getElementById('ddnsModalTitle').innerText = '添加 DDNS 任务';
+  document.getElementById('ddnsId').value = '';
+  document.getElementById('ddnsName').value = '';
+  document.getElementById('ddnsProvider').value = 'cloudflare';
+  document.getElementById('ddnsDomain').value = '';
+  document.getElementById('ddnsIpMode').value = 'ipv6';
+  document.getElementById('ddnsKey').value = '';
+  document.getElementById('ddnsSecret').value = '';
+  document.getElementById('ddnsZone').value = '';
+  document.getElementById('ddnsCustomUrl').value = '';
+  document.getElementById('ddnsInterval').value = '5';
+  document.getElementById('ddnsEnabled').checked = true;
+  document.getElementById('ddnsProxied').checked = false;
+  onDDNSProviderChange();
+  openModal('ddnsModal');
+}
+
+function editDDNS(id) {
+  const d = cachedDDNS.find(x => x.id === id);
+  if (!d) return;
+  document.getElementById('ddnsModalTitle').innerText = '编辑 DDNS：' + (d.name || d.domain);
+  document.getElementById('ddnsId').value = d.id;
+  document.getElementById('ddnsName').value = d.name || '';
+  document.getElementById('ddnsProvider').value = d.provider || 'cloudflare';
+  document.getElementById('ddnsDomain').value = d.domain || '';
+  document.getElementById('ddnsIpMode').value = d.ip_mode || 'ipv6';
+  document.getElementById('ddnsKey').value = d.api_key || '';
+  document.getElementById('ddnsSecret').value = '';
+  document.getElementById('ddnsZone').value = d.zone_id || '';
+  document.getElementById('ddnsCustomUrl').value = d.custom_url || '';
+  document.getElementById('ddnsInterval').value = String(d.interval_min || 5);
+  document.getElementById('ddnsEnabled').checked = !!d.enabled;
+  document.getElementById('ddnsProxied').checked = !!d.proxied;
+  onDDNSProviderChange();
+  openModal('ddnsModal');
+}
+
+async function saveDDNS() {
+  const body = {
+    id: document.getElementById('ddnsId').value,
+    name: document.getElementById('ddnsName').value.trim(),
+    provider: document.getElementById('ddnsProvider').value,
+    domain: document.getElementById('ddnsDomain').value.trim(),
+    ip_mode: document.getElementById('ddnsIpMode').value,
+    api_key: document.getElementById('ddnsKey').value.trim(),
+    api_secret: document.getElementById('ddnsSecret').value.trim(),
+    zone_id: document.getElementById('ddnsZone').value.trim(),
+    custom_url: document.getElementById('ddnsCustomUrl').value.trim(),
+    interval_min: parseInt(document.getElementById('ddnsInterval').value, 10) || 5,
+    enabled: document.getElementById('ddnsEnabled').checked,
+    proxied: document.getElementById('ddnsProxied').checked,
+  };
+  const r = await api('/api/admin/ddns', { method: 'POST', body });
+  if (r.code !== 0) { alert(r.msg); return; }
+  closeModal('ddnsModal');
+  setTimeout(loadDDNS, 800);
+}
+
+async function runDDNS(id) {
+  const r = await api('/api/admin/ddns/run?id=' + encodeURIComponent(id), { method: 'POST' });
+  alert(r.data?.status || r.msg);
+  loadDDNS();
+}
+
+async function delDDNS(id) {
+  if (!confirm('确认删除该 DDNS 任务？')) return;
+  await api('/api/admin/ddns?id=' + encodeURIComponent(id), { method: 'DELETE' });
+  loadDDNS();
 }
 
 if (token) initDashboard();

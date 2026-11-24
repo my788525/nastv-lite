@@ -89,6 +89,8 @@ func main() {
 	mux.HandleFunc("/v/api/v1/play/record", app.handlePlayRecord)
 	mux.HandleFunc("/v/api/v1/play/list", app.handlePlayList)
 	mux.HandleFunc("/v/api/v1/search/list", app.handleSearch)
+	mux.HandleFunc("/v/api/v1/files/list", app.handleFilesList)
+	mux.HandleFunc("/v/api/v1/files/download", app.handleFilesDownload)
 
 	// Admin API (/api/admin/...)
 	mux.HandleFunc("/api/admin/status", app.handleAdminStatus)
@@ -99,8 +101,13 @@ func main() {
 	mux.HandleFunc("/api/admin/settings", app.handleAdminSettings)
 	mux.HandleFunc("/api/admin/cache/clear", app.handleAdminCacheClear)
 	mux.HandleFunc("/api/admin/logs", app.handleAdminLogs)
+	mux.HandleFunc("/api/admin/ddns", app.handleAdminDDNS)
+	mux.HandleFunc("/api/admin/ddns/run", app.handleAdminDDNSRun)
+	mux.HandleFunc("/api/admin/ddns/ip", app.handleAdminDDNSIP)
 	mux.HandleFunc("/api/admin/update/check", app.handleAdminUpdateCheck)
 	mux.HandleFunc("/api/admin/update/apply", app.handleAdminUpdateApply)
+
+	StartDDNSScheduler(app.store)
 
 	// Background auto-scan scheduler
 	go func() {
