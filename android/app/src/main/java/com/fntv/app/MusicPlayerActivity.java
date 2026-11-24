@@ -33,6 +33,7 @@ import com.fntv.app.ui.SyncedLyricsView;
 import com.fntv.app.util.LyricsParser;
 import com.fntv.app.util.SimpleImageLoader;
 
+import java.io.File;
 import java.util.List;
 import java.util.Locale;
 
@@ -106,6 +107,24 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         headerTitle.setTypeface(null, Typeface.BOLD);
         headerTitle.setGravity(Gravity.CENTER);
         topBar.addView(headerTitle, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView btnOffline = makePillBtn("⬇ 离线", "#1E293B");
+        btnOffline.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showBatchOfflineDialog(); }
+        });
+        topBar.addView(btnOffline);
+
+        View spTop1 = new View(this);
+        topBar.addView(spTop1, new LinearLayout.LayoutParams(dp(6), 1));
+
+        TextView btnLocal = makePillBtn("🎧 本地", "#1E293B");
+        btnLocal.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showLocalModeDialog(); }
+        });
+        topBar.addView(btnLocal);
+
+        View spTop2 = new View(this);
+        topBar.addView(spTop2, new LinearLayout.LayoutParams(dp(6), 1));
 
         btnFloatLyrics = makePillBtn("🪟 悬浮歌词", "#1E293B");
         btnFloatLyrics.setOnClickListener(new View.OnClickListener() {
@@ -412,15 +431,133 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
                 .show();
     }
 
+    private void showLocalModeDialog() {
+        final OfflineMusicManager mgr = OfflineMusicManager.getInstance(this);
+        int cnt = mgr.getTrackCount();
+        String sizeTxt = mgr.getTotalSizeText();
+        String brLabel = OfflineMusicManager.getBitrateDisplayLabel(OfflineMusicManager.getPreferredBitrate(this));
+        String onBrLabel = OfflineMusicManager.getBitrateDisplayLabel(OfflineMusicManager.getOnlineBitrate(this));
+        String[] opts = {
+                "▶ 播放全部本地离线音乐 (" + cnt + " 首 / " + sizeTxt + ")",
+                "🌐 在线听歌最大码率 (" + onBrLabel.split(" ")[0] + " · 默认320k)",
+                "⚙ 离线下载最大码率 (" + brLabel.split(" ")[0] + " · 默认192k)",
+                "🗑 清空本地离线音乐缓存"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("🎧 本地模式与音质设置")
+                .setItems(opts, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which == 0) {
+                            List<PlayListItem> offList = mgr.getOfflinePlayListItems();
+                            if (offList.isEmpty()) {
+                                Toast.makeText(MusicPlayerActivity.this, "暂无本地离线音乐，请先点击“⬇ 离线”批量下载", Toast.LENGTH_SHORT).show();
+                            } else {
+                                MusicPlaybackService.startQueue(MusicPlayerActivity.this, offList, 0);
+                                Toast.makeText(MusicPlayerActivity.this, "已切换至本地离线模式（" + offList.size() + " 首）", Toast.LENGTH_SHORT).show();
+                            }
+                        } else if (which == 1) {
+                            showOnlineBitratePickerDialog();
+                        } else if (which == 2) {
+                            showBitratePickerDialog();
+                        } else if (which == 3) {
+                            mgr.clearAll();
+                            Toast.makeText(MusicPlayerActivity.this, "已清空本地离线音乐", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                })
+                .show();
+    }
+
+    private void showOnlineBitratePickerDialog() {
+        String cur = OfflineMusicManager.getOnlineBitrate(this);
+        int checked = 3;
+        for (int i = 0; i < OfflineMusicManager.BITRATE_VALUES.length; i++) {
+            if (OfflineMusicManager.BITRATE_VALUES[i].equals(cur)) { checked = i; break; }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("选择在线听歌最大码率（超出则服务端自动转码）")
+                .setSingleChoiceItems(OfflineMusicManager.BITRATE_LABELS, checked, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        OfflineMusicManager.setOnlineBitrate(MusicPlayerActivity.this, OfflineMusicManager.BITRATE_VALUES[which]);
+                        Toast.makeText(MusicPlayerActivity.this, "在线最大码率已设为：" + OfflineMusicManager.BITRATE_LABELS[which], Toast.LENGTH_SHORT).show();
+                        MusicPlaybackService s = MusicPlaybackService.getInstance();
+                        if (s != null) s.reloadForOnlineBitrateChange();
+                        dialog.dismiss();
+                    }
+                })
+                .show();
+    }
+
+    private void showBitratePickerDialog() {
+        String cur = OfflineMusicManager.getPreferredBitrate(this);
+        int checked = 2;
+        for (int i = 0; i < OfflineMusicManager.BITRATE_VALUES.length; i++) {
+            if (OfflineMusicManager.BITRATE_VALUES[i].equals(cur)) { checked = i; break; }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("选择离线下载最大码率")
+                .setSingleChoiceItems(OfflineMusicManager.BITRATE_LABELS, checked, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        OfflineMusicManager.setPreferredBitrate(MusicPlayerActivity.this, OfflineMusicManager.BITRATE_VALUES[which]);
+                        Toast.makeText(MusicPlayerActivity.this, "已设最大码率：" + OfflineMusicManager.BITRATE_LABELS[which], Toast.LENGTH_SHORT).show();
+                        dialog.dismiss();
+                    }
+                })
+                .show();
+    }
+
+    private void showBatchOfflineDialog() {
+        MusicPlaybackService s = MusicPlaybackService.getInstance();
+        if (s == null || s.getQueue().isEmpty()) return;
+        final List<PlayListItem> q = s.getQueue();
+        final String curBr = OfflineMusicManager.getPreferredBitrate(this);
+        String brTxt = OfflineMusicManager.getBitrateDisplayLabel(curBr);
+        String[] opts = {
+                "⬇ 批量离线当前队列（共 " + q.size() + " 首 · 码率上限 " + brTxt.split(" ")[0] + "）",
+                "⚙ 更改下载最大码率（当前：" + brTxt + "）"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("批量离线缓存到本地")
+                .setItems(opts, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which == 0) {
+                            OfflineMusicManager mgr = OfflineMusicManager.getInstance(MusicPlayerActivity.this);
+                            mgr.addBatchListener(new OfflineMusicManager.BatchListener() {
+                                @Override public void onProgress(int done, int total, String currentTitle) {}
+                                @Override public void onFinished(int ok, int fail) {
+                                    Toast.makeText(MusicPlayerActivity.this,
+                                            "离线下载完成：成功 " + ok + " 首" + (fail > 0 ? "，失败 " + fail + " 首" : ""),
+                                            Toast.LENGTH_LONG).show();
+                                }
+                            });
+                            mgr.enqueueBatch(q, curBr, true);
+                            Toast.makeText(MusicPlayerActivity.this, "已加入后台离线下载队列（跳过已缓存歌曲）", Toast.LENGTH_SHORT).show();
+                        } else {
+                            showBitratePickerDialog();
+                        }
+                    }
+                })
+                .show();
+    }
+
     @Override
     public void onTrackChanged(final PlayListItem item, int index, int total) {
         uiHandler.post(new Runnable() {
             @Override
             public void run() {
                 tvTitle.setText(item.title);
-                String base = FnApiManager.getInstance().getBaseUrl();
-                if (base != null && !base.isEmpty()) {
-                    SimpleImageLoader.load(base + "/v/api/v1/img/" + item.guid, coverImg, FnApiManager.getInstance().getClient());
+                File localCov = OfflineMusicManager.getInstance(MusicPlayerActivity.this).getLocalCoverFile(item.guid);
+                if (localCov != null) {
+                    coverImg.setImageURI(Uri.fromFile(localCov));
+                } else {
+                    String base = FnApiManager.getInstance().getBaseUrl();
+                    if (base != null && !base.isEmpty()) {
+                        SimpleImageLoader.load(base + "/v/api/v1/img/" + item.guid, coverImg, FnApiManager.getInstance().getClient());
+                    }
                 }
                 lyricsView.setLyrics(null, "正在加载歌词...");
             }

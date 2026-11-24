@@ -97,6 +97,7 @@ func main() {
 	mux.HandleFunc("/v/api/v1/hls/", app.handleHLS)
 	mux.HandleFunc("/v/api/v1/img/", app.handleImg)
 	mux.HandleFunc("/v/api/v1/audio/lyrics", app.handleAudioLyrics)
+	mux.HandleFunc("/v/api/v1/audio/offline/", app.handleAudioOffline)
 	mux.HandleFunc("/v/api/v1/subtitle/dl/", app.handleSubtitleDl)
 	mux.HandleFunc("/v/api/v1/play/record", app.handlePlayRecord)
 	mux.HandleFunc("/v/api/v1/play/list", app.handlePlayList)

@@ -193,6 +193,30 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) { doLogin(); }
         });
 
+        // 本地离线听歌入口（无需联网/登录）
+        int offCount = OfflineMusicManager.getInstance(this).getTrackCount();
+        if (offCount > 0) {
+            Button btnOffline = new Button(this);
+            LinearLayout.LayoutParams offLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, (int)(36 * density));
+            offLp.topMargin = (int)(8 * density);
+            btnOffline.setLayoutParams(offLp);
+            btnOffline.setBackgroundResource(R.drawable.bg_btn_primary);
+            btnOffline.setText("🎧 本地离线听歌 (" + offCount + " 首 · 免联网)");
+            btnOffline.setTextColor(0xFF34D399);
+            btnOffline.setTextSize(13);
+            btnOffline.setFocusable(true);
+            btnOffline.setOnClickListener(v -> {
+                java.util.List<com.fntv.app.api.model.PlayListItem> offList =
+                        OfflineMusicManager.getInstance(MainActivity.this).getOfflinePlayListItems();
+                if (!offList.isEmpty()) {
+                    MusicPlaybackService.startQueue(MainActivity.this, offList, 0);
+                    startActivity(new Intent(MainActivity.this, MusicPlayerActivity.class));
+                }
+            });
+            loginCard.addView(btnOffline);
+        }
+
         // 自动登录（仅冷启动时触发，手动退出登录不触发）
         boolean skipAuto = getIntent().getBooleanExtra("skip_auto_login", false);
         if (!skipAuto) {

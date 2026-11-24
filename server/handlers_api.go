@@ -723,3 +723,69 @@ func (app *App) handleAudioLyrics(w http.ResponseWriter, r *http.Request) {
 		"lrc":      lrc,
 	})
 }
+
+func (app *App) handleAudioOffline(w http.ResponseWriter, r *http.Request) {
+	u := app.requireUser(w, r)
+	if u == nil {
+		return
+	}
+	guid := strings.TrimPrefix(r.URL.Path, "/v/api/v1/audio/offline/")
+	guid = strings.TrimSpace(guid)
+	if guid == "" {
+		http.NotFound(w, r)
+		return
+	}
+	it, ok := app.store.GetItem(guid)
+	if !ok || !u.CanAccessLibrary(it.LibID) || it.FilePath == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if it.Type != "Audio" && it.Category != "Music" {
+		errResp(w, 403, "仅支持音频离线缓存")
+		return
+	}
+
+	bitrate := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("bitrate")))
+	switch bitrate {
+	case "96", "128", "192", "320", "original":
+	default:
+		bitrate = "192"
+	}
+
+	if bitrate == "original" || app.transcoder.ffmpegPath == "" {
+		http.ServeFile(w, r, it.FilePath)
+		return
+	}
+
+	// If source is already mp3/m4a/aac and its bitrate <= requested max bitrate, serve directly without re-encoding
+	targetKbps, _ := strconv.Atoi(bitrate)
+	ext := strings.ToLower(filepath.Ext(it.FilePath))
+	if it.Bitrate > 0 && int64(targetKbps*1000) >= it.Bitrate && (ext == ".mp3" || ext == ".m4a" || ext == ".aac") {
+		http.ServeFile(w, r, it.FilePath)
+		return
+	}
+
+	cacheDir := filepath.Join(app.dataDir, "offline_audio")
+	_ = os.MkdirAll(cacheDir, 0755)
+	outPath := filepath.Join(cacheDir, guid+"_"+bitrate+".m4a")
+	if st, err := os.Stat(outPath); err != nil || st.Size() == 0 {
+		tmpPath := outPath + ".tmp.m4a"
+		cmd := exec.Command(app.transcoder.ffmpegPath,
+			"-y", "-v", "quiet",
+			"-i", it.FilePath,
+			"-vn", "-c:a", "aac", "-b:a", bitrate+"k",
+			"-movflags", "+faststart",
+			"-map_metadata", "0",
+			tmpPath,
+		)
+		if err := cmd.Run(); err != nil {
+			_ = os.Remove(tmpPath)
+			// Fallback to original file if transcode fails
+			http.ServeFile(w, r, it.FilePath)
+			return
+		}
+		_ = os.Rename(tmpPath, outPath)
+	}
+	w.Header().Set("Content-Type", "audio/mp4")
+	http.ServeFile(w, r, outPath)
+}

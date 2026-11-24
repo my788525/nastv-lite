@@ -1,5 +1,5 @@
 appname               = nastv-lite
-version               = 1.3.0
+version               = 1.4.0
 display_name          = NASFun
 desc                  = NASFun 轻量化家庭影音与音乐服务端（支持影视剧海报墙、纯文件夹浏览、音乐歌词、多用户分权、FFmpeg硬件转码、IPv4/IPv6双栈及在线自动更新）
 platform              = x86

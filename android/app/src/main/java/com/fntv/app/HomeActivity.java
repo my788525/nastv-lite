@@ -1451,6 +1451,51 @@ public class HomeActivity extends AppCompatActivity {
             bar.addView(libModeBtn);
         }
 
+        boolean hasAudioInBrowse = false;
+        if (savedBrowseList != null) {
+            for (PlayListItem pli : savedBrowseList) {
+                if (pli != null && "Audio".equalsIgnoreCase(pli.type)) {
+                    hasAudioInBrowse = true;
+                    break;
+                }
+            }
+        }
+        if (hasAudioInBrowse) {
+            View spAud = new View(this);
+            spAud.setLayoutParams(new LinearLayout.LayoutParams(12, 1));
+            bar.addView(spAud);
+
+            Button batchOfflineBtn = new Button(this);
+            batchOfflineBtn.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, (int)(38 * getResources().getDisplayMetrics().density)));
+            batchOfflineBtn.setBackgroundResource(R.drawable.bg_btn_primary);
+            batchOfflineBtn.setText("⬇ 批量离线");
+            batchOfflineBtn.setTextColor(0xFF38BDF8);
+            batchOfflineBtn.setTextSize(12);
+            batchOfflineBtn.setFocusable(true);
+            batchOfflineBtn.setPadding(16, 0, 16, 0);
+            batchOfflineBtn.setOnClickListener(v -> showBatchOfflineBrowseDialog());
+            bar.addView(batchOfflineBtn);
+        }
+
+        if (OfflineMusicManager.getInstance(this).getTrackCount() > 0) {
+            View spLoc = new View(this);
+            spLoc.setLayoutParams(new LinearLayout.LayoutParams(12, 1));
+            bar.addView(spLoc);
+
+            Button localModeBtn = new Button(this);
+            localModeBtn.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, (int)(38 * getResources().getDisplayMetrics().density)));
+            localModeBtn.setBackgroundResource(R.drawable.bg_btn_primary);
+            localModeBtn.setText("🎧 本地模式 (" + OfflineMusicManager.getInstance(this).getTrackCount() + ")");
+            localModeBtn.setTextColor(0xFF34D399);
+            localModeBtn.setTextSize(12);
+            localModeBtn.setFocusable(true);
+            localModeBtn.setPadding(16, 0, 16, 0);
+            localModeBtn.setOnClickListener(v -> showLocalOfflineBrowseDialog());
+            bar.addView(localModeBtn);
+        }
+
         if (MusicPlaybackService.getInstance() != null && MusicPlaybackService.getInstance().getCurrentItem() != null) {
             View spM = new View(this);
             spM.setLayoutParams(new LinearLayout.LayoutParams(12, 1));
@@ -2044,6 +2089,83 @@ public class HomeActivity extends AppCompatActivity {
         if (parentGuid != null) intent.putExtra("parent_guid", parentGuid);
         if (forceSingle) intent.putExtra("force_single", true);
         startActivity(intent);
+    }
+
+    private void showBatchOfflineBrowseDialog() {
+        if (savedBrowseList == null || savedBrowseList.isEmpty()) return;
+        final List<PlayListItem> audioItems = new ArrayList<>();
+        for (PlayListItem pli : savedBrowseList) {
+            if (pli != null && "Audio".equalsIgnoreCase(pli.type)) audioItems.add(pli);
+        }
+        if (audioItems.isEmpty()) return;
+        final String curBr = OfflineMusicManager.getPreferredBitrate(this);
+        String brTxt = OfflineMusicManager.getBitrateDisplayLabel(curBr);
+        String[] opts = {
+                "⬇ 下载当前列表全部音频（共 " + audioItems.size() + " 首 · 最大码率 " + brTxt.split(" ")[0] + "）",
+                "⚙ 选择下载最大码率（当前：" + brTxt + "）"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("批量离线音乐到本地")
+                .setItems(opts, (d, which) -> {
+                    if (which == 0) {
+                        OfflineMusicManager mgr = OfflineMusicManager.getInstance(this);
+                        mgr.addBatchListener(new OfflineMusicManager.BatchListener() {
+                            @Override public void onProgress(int done, int total, String title) {}
+                            @Override public void onFinished(int ok, int fail) {
+                                Toast.makeText(HomeActivity.this,
+                                        "批量离线完成：成功 " + ok + " 首" + (fail > 0 ? "，失败 " + fail + " 首" : ""),
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        });
+                        mgr.enqueueBatch(audioItems, curBr, true);
+                        Toast.makeText(this, "已开始后台批量下载（含歌词与封面，跳过已下载）", Toast.LENGTH_SHORT).show();
+                    } else {
+                        String[] labels = OfflineMusicManager.BITRATE_LABELS;
+                        int chk = 2;
+                        for (int i = 0; i < OfflineMusicManager.BITRATE_VALUES.length; i++) {
+                            if (OfflineMusicManager.BITRATE_VALUES[i].equals(curBr)) { chk = i; break; }
+                        }
+                        new AlertDialog.Builder(this)
+                                .setTitle("选择离线下载最大码率")
+                                .setSingleChoiceItems(labels, chk, (d2, w2) -> {
+                                    OfflineMusicManager.setPreferredBitrate(this, OfflineMusicManager.BITRATE_VALUES[w2]);
+                                    Toast.makeText(this, "已设置最大码率：" + labels[w2], Toast.LENGTH_SHORT).show();
+                                    d2.dismiss();
+                                })
+                                .show();
+                    }
+                })
+                .show();
+    }
+
+    private void showLocalOfflineBrowseDialog() {
+        OfflineMusicManager mgr = OfflineMusicManager.getInstance(this);
+        List<PlayListItem> offList = mgr.getOfflinePlayListItems();
+        if (offList.isEmpty()) {
+            Toast.makeText(this, "暂无本地离线音乐", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] opts = {
+                "▶ 进入本地模式顺序播放 (" + offList.size() + " 首 · " + mgr.getTotalSizeText() + ")",
+                "🔀 进入本地模式随机播放",
+                "🗑 清空本地离线音乐缓存"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("🎧 本地离线音乐模式")
+                .setItems(opts, (d, which) -> {
+                    if (which == 0) {
+                        MusicPlaybackService.startQueue(this, offList, 0);
+                        startActivity(new Intent(this, MusicPlayerActivity.class));
+                    } else if (which == 1) {
+                        java.util.Collections.shuffle(offList, new java.util.Random());
+                        MusicPlaybackService.startQueue(this, offList, 0);
+                        startActivity(new Intent(this, MusicPlayerActivity.class));
+                    } else {
+                        mgr.clearAll();
+                        Toast.makeText(this, "已清空本地离线音乐", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
     }
 
     /** 文件夹长按弹窗选择：顺序播放、继续播放、随机播放 或 打开文件夹 */

@@ -273,15 +273,18 @@ public class MusicPlaybackService extends Service {
             audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
         }
 
+        File localFile = OfflineMusicManager.getInstance(this).getLocalAudioFile(item.guid);
         String baseUrl = resolveBaseUrl();
-        String streamUrl = baseUrl + "/v/api/v1/media/range/" + item.guid;
-        Log.d(TAG, "Playing audio: " + item.title + " -> " + streamUrl);
+        String playUri = (localFile != null)
+                ? Uri.fromFile(localFile).toString()
+                : buildOnlineAudioUrl(baseUrl, item.guid);
+        Log.d(TAG, "Playing audio (" + (localFile != null ? "LOCAL" : "STREAM") + "): " + item.title + " -> " + playUri);
 
         currentArtist = item.artist != null ? item.artist : "";
         currentAlbum = item.album != null ? item.album : "";
         currentLyrics = new LyricsParser.Result(Collections.<LyricsParser.TimedLyric>emptyList(), Collections.<String>emptyList());
 
-        player.setMediaItem(MediaItem.fromUri(Uri.parse(streamUrl)));
+        player.setMediaItem(MediaItem.fromUri(Uri.parse(playUri)));
         player.prepare();
         player.play();
 
@@ -293,6 +296,22 @@ public class MusicPlaybackService extends Service {
 
         fetchLyrics(item);
         schedulePrefetchNextTracks(index, baseUrl);
+    }
+
+    private String buildOnlineAudioUrl(String baseUrl, String guid) {
+        String br = OfflineMusicManager.getOnlineBitrate(this);
+        if ("original".equalsIgnoreCase(br)) {
+            return baseUrl + "/v/api/v1/media/range/" + guid;
+        }
+        return baseUrl + "/v/api/v1/audio/offline/" + guid + "?bitrate=" + br;
+    }
+
+    public void reloadForOnlineBitrateChange() {
+        if (currentIndex >= 0) {
+            long pos = getCurrentPosition();
+            playAt(currentIndex);
+            if (pos > 1000) seekTo(pos);
+        }
     }
 
     private String resolveBaseUrl() {
@@ -344,7 +363,8 @@ public class MusicPlaybackService extends Service {
             public void run() {
                 for (PlayListItem target : targets) {
                     if (gen != prefetchGeneration.get()) return;
-                    String url = baseUrl + "/v/api/v1/media/range/" + target.guid;
+                    if (OfflineMusicManager.getInstance(MusicPlaybackService.this).isDownloaded(target.guid)) continue;
+                    String url = buildOnlineAudioUrl(baseUrl, target.guid);
                     try {
                         CacheDataSource ds = cacheDataSourceFactory.createDataSourceForDownloading();
                         DataSpec spec = new DataSpec(Uri.parse(url));
@@ -379,6 +399,18 @@ public class MusicPlaybackService extends Service {
 
     private void fetchLyrics(final PlayListItem item) {
         if (item == null) return;
+        OfflineMusicManager.OfflineTrack off = OfflineMusicManager.getInstance(this).getOfflineTrack(item.guid);
+        if (off != null) {
+            AudioLyricsResponse offResp = new AudioLyricsResponse();
+            offResp.guid = off.guid;
+            offResp.title = off.title;
+            offResp.artist = off.artist;
+            offResp.album = off.album;
+            offResp.duration = off.duration;
+            offResp.lrc = off.lrc;
+            applyLyricsResponse(item, offResp);
+            if (off.lrc != null && !off.lrc.isEmpty()) return;
+        }
         AudioLyricsResponse cached = lyricsCache.get(item.guid);
         if (cached != null) {
             applyLyricsResponse(item, cached);

@@ -298,9 +298,14 @@ public class FloatingLyricsService extends Service {
             tvTitle.setText(artist.isEmpty() ? item.title : (item.title + " - " + artist));
             if (tier == TIER_FULL && !item.guid.equals(lastCoverGuid)) {
                 lastCoverGuid = item.guid;
-                String base = FnApiManager.getInstance().getBaseUrl();
-                if (base != null && !base.isEmpty()) {
-                    SimpleImageLoader.load(base + "/v/api/v1/img/" + item.guid, coverImg, FnApiManager.getInstance().getClient());
+                java.io.File localCov = OfflineMusicManager.getInstance(this).getLocalCoverFile(item.guid);
+                if (localCov != null) {
+                    coverImg.setImageURI(android.net.Uri.fromFile(localCov));
+                } else {
+                    String base = FnApiManager.getInstance().getBaseUrl();
+                    if (base != null && !base.isEmpty()) {
+                        SimpleImageLoader.load(base + "/v/api/v1/img/" + item.guid, coverImg, FnApiManager.getInstance().getClient());
+                    }
                 }
             }
         }
