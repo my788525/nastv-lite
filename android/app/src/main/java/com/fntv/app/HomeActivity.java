@@ -182,6 +182,7 @@ public class HomeActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         t0 = System.currentTimeMillis();
         super.onCreate(savedInstanceState);
+        CrashGuard.install(this);
         setContentView(R.layout.activity_home);
 
         // 比亚迪车机：启动即适配当前屏横竖屏状态，不触发系统旋转
@@ -306,6 +307,7 @@ public class HomeActivity extends AppCompatActivity {
 
     protected void onResume() {
         super.onResume();
+        CrashGuard.showIfCrashed(this);
         if (savedDetailItem != null) {
             buildDetailPage(savedDetailItem, savedDetailInfo);
         } else if (currentTab == 0 && !mediaLibraries.isEmpty() && overviewBuilt && showingOverview) {

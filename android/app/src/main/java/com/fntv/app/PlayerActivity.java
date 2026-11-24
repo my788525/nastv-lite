@@ -147,6 +147,7 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        CrashGuard.install(this);
         setContentView(R.layout.activity_player);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(Color.BLACK);
@@ -1623,6 +1624,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void updateTime() {
         if (player == null) return;
+        try {
         // 睡眠倒计时 / 定时关闭检测
         if (sleepTimerMinutes > 0 && sleepTimerEndTimeMs > 0 && System.currentTimeMillis() >= sleepTimerEndTimeMs) {
             sleepTimerMinutes = 0;
@@ -1677,6 +1679,9 @@ public class PlayerActivity extends AppCompatActivity {
             } else if (remainingMs > 12000) {
                 endingBannerShown = false;
             }
+        }
+        } catch (Throwable t) {
+            Log.e(TAG, "updateTime error: " + t.getMessage());
         }
         handler.postDelayed(timeR, 200);
     }

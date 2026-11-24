@@ -8,10 +8,10 @@
     "changelog": "NASFun 服务端 v1.5.2：\n1. 新建音乐库时自动为所有现有账户默认开通该音乐库访问权限。"
   },
   "android": {
-    "versionCode": 11,
-    "versionName": "1.5.2",
-    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.2/NASFun_v1.5.2.apk",
-    "changelog": "NASFun 客户端 v1.5.2（兼容 Android 4.4+）：\n1. 修复部分车机播放视频约 2 秒后因窗口色彩模式/刷新率设置异常导致跳出播放页的问题。\n2. 持久化保存登录令牌并在首页恢复时自动补全，彻底解决从播放页返回或后台重建后媒体库变空的问题。",
+    "versionCode": 12,
+    "versionName": "1.5.3",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.3/NASFun_v1.5.3.apk",
+    "changelog": "NASFun 客户端 v1.5.3（兼容 Android 4.4+）：\n1. 增加播放器运行时异常防护与崩溃堆栈弹窗诊断（CrashGuard），定位并防止播放界面意外退出。",
     "forceUpdate": false
   }
 }
