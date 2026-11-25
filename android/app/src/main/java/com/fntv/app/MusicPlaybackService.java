@@ -37,6 +37,7 @@ import com.google.android.exoplayer2.database.StandaloneDatabaseProvider;
 import com.google.android.exoplayer2.extractor.DefaultExtractorsFactory;
 import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
 import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
@@ -128,9 +129,26 @@ public class MusicPlaybackService extends Service {
         if (items == null || items.isEmpty()) return;
         pendingQueue = new ArrayList<>(items);
         pendingIndex = Math.max(0, Math.min(startIndex, items.size() - 1));
+        startPendingIfNeeded(ctx);
+    }
+
+    public static void startPendingIfNeeded(Context ctx) {
+        if (instance != null && instance.getCurrentItem() != null) return;
+        if (pendingQueue == null || pendingQueue.isEmpty()) return;
         Intent intent = new Intent(ctx, MusicPlaybackService.class);
         intent.setAction(ACTION_PLAY_QUEUE);
-        ContextCompat.startForegroundService(ctx, intent);
+        try {
+            ContextCompat.startForegroundService(ctx, intent);
+        } catch (Throwable t) {
+            try { ctx.startService(intent); } catch (Throwable ignored) {}
+        }
+    }
+
+    public static String getPendingTitle() {
+        if (pendingQueue != null && pendingIndex >= 0 && pendingIndex < pendingQueue.size()) {
+            return pendingQueue.get(pendingIndex).title;
+        }
+        return null;
     }
 
     private final AudioManager.OnAudioFocusChangeListener focusListener = new AudioManager.OnAudioFocusChangeListener() {
@@ -166,14 +184,26 @@ public class MusicPlaybackService extends Service {
     public void onCreate() {
         super.onCreate();
         instance = this;
+        try {
+            if (FnApiManager.getInstance().getApi() == null) {
+                String b = resolveBaseUrl();
+                if (b != null && !b.isEmpty()) FnApiManager.getInstance().updateBaseUrl(b);
+            }
+            if (FnApiManager.getInstance().getToken() == null || FnApiManager.getInstance().getToken().isEmpty()) {
+                String tok = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("auth_token", "");
+                if (!tok.isEmpty()) FnApiManager.getInstance().setToken(tok);
+            }
+        } catch (Throwable ignored) {}
         createNotificationChannel();
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
-        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        if (pm != null) {
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "nastv:music_wakelock");
-            wakeLock.setReferenceCounted(false);
-        }
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "nastv:music_wakelock");
+                wakeLock.setReferenceCounted(false);
+            }
+        } catch (Throwable ignored) {}
 
         DataSource.Factory upstreamFactory = new DataSource.Factory() {
             @Override
@@ -195,7 +225,7 @@ public class MusicPlaybackService extends Service {
                     .setUpstreamDataSourceFactory(upstreamFactory)
                     .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);
             dsFactory = cacheDataSourceFactory;
-        } catch (Exception e) {
+        } catch (Throwable e) {
             Log.w(TAG, "Init music disk cache failed, fallback to direct stream: " + e.getMessage());
         }
         activeDataSourceFactory = dsFactory;
@@ -247,26 +277,30 @@ public class MusicPlaybackService extends Service {
                     @Override
                     public void run() {
                         android.widget.Toast.makeText(MusicPlaybackService.this,
-                                "音频加载失败，请检查网络或切换音质", android.widget.Toast.LENGTH_SHORT).show();
+                                "音频加载失败: " + error.getMessage(), android.widget.Toast.LENGTH_LONG).show();
                     }
                 });
             }
         });
 
-        mediaSession = new MediaSessionCompat(this, "NASTVMusicSession");
-        mediaSession.setCallback(new MediaSessionCompat.Callback() {
-            @Override public void onPlay() { resume(); }
-            @Override public void onPause() { pause(); }
-            @Override public void onSkipToNext() { playNext(false); }
-            @Override public void onSkipToPrevious() { playPrevious(); }
-            @Override public void onSeekTo(long pos) { seekTo(pos); }
-        });
-        mediaSession.setActive(true);
+        try {
+            mediaSession = new MediaSessionCompat(this, "NASFunMusicSession");
+            mediaSession.setCallback(new MediaSessionCompat.Callback() {
+                @Override public void onPlay() { resume(); }
+                @Override public void onPause() { pause(); }
+                @Override public void onSkipToNext() { playNext(false); }
+                @Override public void onSkipToPrevious() { playPrevious(); }
+                @Override public void onSeekTo(long pos) { seekTo(pos); }
+            });
+            mediaSession.setActive(true);
+        } catch (Throwable t) {
+            Log.w(TAG, "MediaSession init skipped: " + t.getMessage());
+        }
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        startForeground(NOTIF_ID, buildNotification());
+        try { startForeground(NOTIF_ID, buildNotification()); } catch (Throwable ignored) {}
         if (intent != null && intent.getAction() != null) {
             String action = intent.getAction();
             if (ACTION_PLAY_QUEUE.equals(action)) {
@@ -318,12 +352,19 @@ public class MusicPlaybackService extends Service {
         currentLyrics = new LyricsParser.Result(Collections.<LyricsParser.TimedLyric>emptyList(), Collections.<String>emptyList());
         fallbackDirectTried = false;
 
-        DataSource.Factory useFactory = (localFile != null && directDataSourceFactory != null)
-                ? directDataSourceFactory
-                : (activeDataSourceFactory != null ? activeDataSourceFactory : directDataSourceFactory);
-        player.setMediaSource(new ProgressiveMediaSource.Factory(
-                useFactory, new DefaultExtractorsFactory())
-                .createMediaSource(MediaItem.fromUri(Uri.parse(playUri))));
+        if (playUri.contains(".m3u8")) {
+            player.setMediaSource(new HlsMediaSource.Factory(
+                    directDataSourceFactory != null ? directDataSourceFactory : activeDataSourceFactory)
+                    .setAllowChunklessPreparation(true)
+                    .createMediaSource(MediaItem.fromUri(Uri.parse(playUri))));
+        } else {
+            DataSource.Factory useFactory = (localFile != null && directDataSourceFactory != null)
+                    ? directDataSourceFactory
+                    : (activeDataSourceFactory != null ? activeDataSourceFactory : directDataSourceFactory);
+            player.setMediaSource(new ProgressiveMediaSource.Factory(
+                    useFactory, new DefaultExtractorsFactory())
+                    .createMediaSource(MediaItem.fromUri(Uri.parse(playUri))));
+        }
         player.prepare();
         player.play();
 
@@ -342,7 +383,7 @@ public class MusicPlaybackService extends Service {
         if ("original".equalsIgnoreCase(br)) {
             return baseUrl + "/v/api/v1/media/range/" + guid;
         }
-        return baseUrl + "/v/api/v1/audio/offline/" + guid + "?bitrate=" + br;
+        return baseUrl + "/v/api/v1/hls/" + guid + "/audio_" + br + "/index.m3u8";
     }
 
     public void reloadForOnlineBitrateChange() {
@@ -405,6 +446,17 @@ public class MusicPlaybackService extends Service {
                     if (gen != prefetchGeneration.get()) return;
                     if (OfflineMusicManager.getInstance(MusicPlaybackService.this).isDownloaded(target.guid)) continue;
                     String url = buildOnlineAudioUrl(baseUrl, target.guid);
+                    if (url.contains(".m3u8")) {
+                        // Pre-warm HLS transcode on NAS server so next track starts instantaneously
+                        try {
+                            okhttp3.Request req = new okhttp3.Request.Builder().url(url).build();
+                            try (okhttp3.Response resp = FnApiManager.getInstance().getStreamClient().newCall(req).execute()) {
+                                if (resp.body() != null) resp.body().close();
+                            }
+                            Log.d(TAG, "Pre-warmed audio HLS: " + target.title);
+                        } catch (Exception ignored) {}
+                        continue;
+                    }
                     try {
                         CacheDataSource ds = cacheDataSourceFactory.createDataSourceForDownloading();
                         DataSpec spec = new DataSpec(Uri.parse(url));
@@ -488,6 +540,10 @@ public class MusicPlaybackService extends Service {
 
     public void togglePlayPause() {
         if (player == null) return;
+        if (player.getPlaybackState() == Player.STATE_IDLE && currentIndex >= 0) {
+            playAt(currentIndex);
+            return;
+        }
         if (player.isPlaying()) pause();
         else resume();
     }

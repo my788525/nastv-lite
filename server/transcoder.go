@@ -27,6 +27,10 @@ var QualityProfiles = []QualityProfile{
 	{Key: "480p", Label: "480P 流畅 (1.5M)", Height: 480, Bitrate: 1500000},
 	{Key: "360p", Label: "360P 极速省流 (800K)", Height: 360, Bitrate: 800000},
 	{Key: "audio", Label: "纯音频极速 (128K)", Height: 0, Bitrate: 128000, AudioOnly: true},
+	{Key: "audio_96", Label: "音乐省流 (96K)", Height: 0, Bitrate: 96000, AudioOnly: true},
+	{Key: "audio_128", Label: "音乐标准 (128K)", Height: 0, Bitrate: 128000, AudioOnly: true},
+	{Key: "audio_192", Label: "音乐均衡 (192K)", Height: 0, Bitrate: 192000, AudioOnly: true},
+	{Key: "audio_320", Label: "音乐高音质 (320K)", Height: 0, Bitrate: 320000, AudioOnly: true},
 }
 
 func FindQualityProfile(key string) *QualityProfile {
@@ -254,10 +258,15 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 
 	var args []string
 	if prof.AudioOnly {
+		kbps := prof.Bitrate / 1000
+		if kbps <= 0 {
+			kbps = 128
+		}
 		args = []string{
 			"-y", "-i", item.FilePath,
-			"-vn", "-c:a", "aac", "-b:a", "128k", "-ac", "2",
-			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
+			"-vn", "-c:a", "aac", "-b:a", fmt.Sprintf("%dk", kbps), "-ac", "2",
+			"-f", "hls", "-hls_time", "2", "-hls_list_size", "0",
+			"-hls_playlist_type", "event", "-hls_flags", "independent_segments",
 			"-hls_segment_filename", segPattern, m3u8Path,
 		}
 	} else if t.hasVAAPI && cfg.EnableVAAPI {

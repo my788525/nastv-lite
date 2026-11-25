@@ -71,6 +71,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        CrashGuard.install(this);
         OrientationHelper.adaptOrientation(this);
         buildUi();
         applyOrientationLayout(getResources().getConfiguration().orientation);
@@ -257,7 +258,12 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         btnPlayPause.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 MusicPlaybackService s = MusicPlaybackService.getInstance();
-                if (s != null) s.togglePlayPause();
+                if (s != null) {
+                    s.togglePlayPause();
+                } else {
+                    MusicPlaybackService.startPendingIfNeeded(MusicPlayerActivity.this);
+                    Toast.makeText(MusicPlayerActivity.this, "正在启动音乐播放服务...", Toast.LENGTH_SHORT).show();
+                }
             }
         });
         btnRow.addView(btnPlayPause, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -330,6 +336,13 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
             s.addListener(this);
             listenerAttached = true;
             syncAllFromService(s);
+        } else {
+            String pt = MusicPlaybackService.getPendingTitle();
+            if (pt != null && !pt.isEmpty()) {
+                tvTitle.setText(pt);
+                tvArtist.setText("正在加载音频...");
+            }
+            MusicPlaybackService.startPendingIfNeeded(this);
         }
         updateFloatingBtnState();
         uiHandler.post(progressTask);
@@ -643,6 +656,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         tv.setGravity(Gravity.CENTER);
         tv.setPadding(dp(8), dp(10), dp(8), dp(10));
         tv.setFocusable(true);
+        tv.setClickable(true);
         tv.setBackground(makeFocusDrawable("#00000000", 12));
         return tv;
     }
