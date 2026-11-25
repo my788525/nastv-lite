@@ -274,6 +274,24 @@ func (app *App) handleAdminMusicSearch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (app *App) handleAdminMusicPreview(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		errResp(w, 400, "缺少歌曲 ID")
+		return
+	}
+	cfg := app.store.GetSettings()
+	audioURL := resolveCustomAudioURL(cfg.MusicSourceAPI, id)
+	if audioURL == "" {
+		errResp(w, 404, "未获取到试听链接")
+		return
+	}
+	okResp(w, map[string]string{"url": audioURL})
+}
+
 func (app *App) handleAdminMusicTasks(w http.ResponseWriter, r *http.Request) {
 	if app.requireAdmin(w, r) == nil {
 		return

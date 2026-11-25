@@ -178,6 +178,7 @@ func main() {
 	mux.HandleFunc("/api/admin/settings", app.handleAdminSettings)
 	mux.HandleFunc("/api/admin/audio/prewarm", app.handleAdminAudioPrewarm)
 	mux.HandleFunc("/api/admin/music/search", app.handleAdminMusicSearch)
+	mux.HandleFunc("/api/admin/music/preview", app.handleAdminMusicPreview)
 	mux.HandleFunc("/api/admin/music/download", app.handleAdminMusicDownload)
 	mux.HandleFunc("/api/admin/music/tasks", app.handleAdminMusicTasks)
 	mux.HandleFunc("/api/admin/cache/clear", app.handleAdminCacheClear)
