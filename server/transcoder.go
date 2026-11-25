@@ -545,6 +545,7 @@ func (t *Transcoder) PrewarmAllAudioCache(s *Store, qualityKey string) {
 	}
 	cachedCount := int64(0)
 	newCount := int64(0)
+	enrichedCount := int64(0)
 	var cntMu sync.Mutex
 
 	workers := 2
@@ -562,6 +563,17 @@ func (t *Transcoder) PrewarmAllAudioCache(s *Store, qualityKey string) {
 			for it := range jobs {
 				if s.GetSettings().DisableAudioPrewarm {
 					return
+				}
+				// 顺带补齐歌词、专辑封面、歌手/专辑/时长元数据
+				if it.Lyrics == "" || it.PosterPath == "" || it.Artist == "" {
+					if EnrichSingleAudioTrack(s, t.thumbDir, t.ffprobePath, t.ffmpegPath, it, false) {
+						cntMu.Lock()
+						enrichedCount++
+						if enrichedCount%10 == 0 {
+							_ = s.Save()
+						}
+						cntMu.Unlock()
+					}
 				}
 				sessDir := filepath.Join(t.audioCacheDir, it.Guid+"_"+qualityKey)
 				m3u8Path := filepath.Join(sessDir, "index.m3u8")
@@ -608,8 +620,11 @@ func (t *Transcoder) PrewarmAllAudioCache(s *Store, qualityKey string) {
 		}()
 	}
 	wg.Wait()
-	if newCount > 0 {
-		log.Printf("[AudioPrewarm] 本轮预缓存完成：新增 %d 首，总计已缓存 %d/%d 首 (%s)", newCount, cachedCount, len(audioItems), qualityKey)
+	if enrichedCount > 0 {
+		_ = s.Save()
+	}
+	if newCount > 0 || enrichedCount > 0 {
+		log.Printf("[AudioPrewarm] 本轮预缓存完成：新增转码 %d 首，补齐元数据 %d 首，总计已缓存 %d/%d 首 (%s)", newCount, enrichedCount, cachedCount, len(audioItems), qualityKey)
 	}
 }
 

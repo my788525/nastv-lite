@@ -222,22 +222,43 @@ func ScrapeMusicLibrary(s *Store, thumbDir, ffprobePath, ffmpegPath, libID strin
 
 	updated := 0
 	for _, it := range targets {
-		qTitle, qArtist := parseTrackTitleArtist(it.Title, it.RelPath)
-		if it.Artist != "" {
-			qArtist = it.Artist
+		if EnrichSingleAudioTrack(s, thumbDir, ffprobePath, ffmpegPath, it, force) {
+			updated++
 		}
+		time.Sleep(150 * time.Millisecond)
+	}
 
-		// 1. Check local sidecar .lrc/.txt
-		localLrc := ""
-		if it.FilePath != "" {
-			base := strings.TrimSuffix(it.FilePath, filepath.Ext(it.FilePath))
-			for _, ext := range []string{".lrc", ".LRC", ".txt"} {
-				if raw, err := os.ReadFile(base + ext); err == nil && len(raw) > 0 {
-					localLrc = strings.TrimSpace(strings.TrimPrefix(string(raw), "\xef\xbb\xbf"))
-					break
-				}
+	if updated > 0 {
+		_ = s.Save()
+		log.Printf("[MusicScraper] Library %s scraped %d audio tracks", lib.Name, updated)
+	}
+	return updated
+}
+
+// EnrichSingleAudioTrack 补齐单首歌曲的本地/内嵌/LrcLib 歌词、内嵌/iTunes 封面及歌手专辑时长信息
+func EnrichSingleAudioTrack(s *Store, thumbDir, ffprobePath, ffmpegPath string, it *MediaItem, force bool) bool {
+	if it == nil || it.Type != "Audio" {
+		return false
+	}
+	if !force && it.Lyrics != "" && it.PosterPath != "" && it.Artist != "" {
+		return false
+	}
+	qTitle, qArtist := parseTrackTitleArtist(it.Title, it.RelPath)
+	if it.Artist != "" {
+		qArtist = it.Artist
+	}
+
+	// 1. Check local sidecar .lrc/.txt
+	localLrc := ""
+	if it.FilePath != "" {
+		base := strings.TrimSuffix(it.FilePath, filepath.Ext(it.FilePath))
+		for _, ext := range []string{".lrc", ".LRC", ".txt"} {
+			if raw, err := os.ReadFile(base + ext); err == nil && len(raw) > 0 {
+				localLrc = strings.TrimSpace(strings.TrimPrefix(string(raw), "\xef\xbb\xbf"))
+				break
 			}
 		}
+	}
 
 		// 2. Read embedded tags via ffprobe
 		fTitle, fArtist, fAlbum, fLyrics, fDur := readAudioMetaViaFFprobe(ffprobePath, it.FilePath)
@@ -312,6 +333,7 @@ func ScrapeMusicLibrary(s *Store, thumbDir, ffprobePath, ffmpegPath, libID strin
 		}
 
 		if lrc != "" || artist != "" || album != "" || posterLocal != "" || dur > 0 {
+			changed := false
 			s.mu.Lock()
 			if cur, exists := s.data.Items[it.Guid]; exists {
 				if artist != "" {
@@ -329,16 +351,10 @@ func ScrapeMusicLibrary(s *Store, thumbDir, ffprobePath, ffmpegPath, libID strin
 				if dur > 0 {
 					cur.Duration = dur
 				}
-				updated++
+				changed = true
 			}
 			s.mu.Unlock()
+			return changed
 		}
-		time.Sleep(150 * time.Millisecond)
-	}
-
-	if updated > 0 {
-		_ = s.Save()
-		log.Printf("[MusicScraper] Library %s scraped %d audio tracks", lib.Name, updated)
-	}
-	return updated
+		return false
 }
