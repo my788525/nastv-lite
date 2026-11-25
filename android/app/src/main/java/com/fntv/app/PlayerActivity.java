@@ -361,7 +361,7 @@ public class PlayerActivity extends AppCompatActivity {
                         if (player != null) {
                             savedPlaybackUrl = fullUrl;
                             useHls = fullUrl.contains(".m3u8");
-                            com.google.android.exoplayer2.upstream.DataSource.Factory f = () -> new OkHttpExoDataSource(apiManager.getStreamClient());
+                            com.google.android.exoplayer2.upstream.DataSource.Factory f = buildStreamDataSourceFactory();
                             if (useHls) {
                                 player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(fullUrl)));
                             } else {
@@ -936,14 +936,22 @@ public class PlayerActivity extends AppCompatActivity {
         }
     };
 
+    private com.google.android.exoplayer2.upstream.DataSource.Factory buildStreamDataSourceFactory() {
+        SharedPreferences sp = getSharedPreferences("fntv_prefs", MODE_PRIVATE);
+        boolean useCache = sp.getBoolean("pref_video_cache", true);
+        boolean usePrefetch = sp.getBoolean("pref_hls_prefetch", true);
+        return VideoCacheManager.createDataSourceFactory(this, apiManager.getStreamClient(), useCache, usePrefetch);
+    }
+
     private String appendHlsParams(String url) {
         if (url == null || !url.contains("/v/api/v1/hls/")) return url;
         SharedPreferences sp = getSharedPreferences("fntv_prefs", MODE_PRIVATE);
         String codec = sp.getString("pref_video_codec", "h264");
         String container = sp.getString("pref_hls_container", "ts");
         int seg = sp.getInt("pref_hls_seg_sec", 2);
+        String hwdec = sp.getBoolean("pref_server_hwdecode", true) ? "1" : "0";
         String sep = url.contains("?") ? "&" : "?";
-        return url + sep + "codec=" + codec + "&container=" + container + "&seg=" + seg;
+        return url + sep + "codec=" + codec + "&container=" + container + "&seg=" + seg + "&hwdecode=" + hwdec;
     }
 
     private com.google.android.exoplayer2.LoadControl buildLoadControl() {
@@ -980,7 +988,7 @@ public class PlayerActivity extends AppCompatActivity {
         OkHttpExoDataSource.setChunkedMode(cfg.chunkedModeSize);
         useHls = isHlsStream;
         savedPlaybackUrl = playUrl;
-        com.google.android.exoplayer2.upstream.DataSource.Factory f = () -> new OkHttpExoDataSource(apiManager.getStreamClient());
+        com.google.android.exoplayer2.upstream.DataSource.Factory f = buildStreamDataSourceFactory();
         if (useHls) {
             player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(playUrl)));
             Log.d(TAG, "播放器: HLS");

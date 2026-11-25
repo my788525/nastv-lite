@@ -225,6 +225,7 @@ type HLSOptions struct {
 	Codec      string // "", "h264", "hevc"
 	Container  string // "", "ts", "fmp4"
 	SegmentSec int    // 0 (use cfg), 2, 4, 6
+	HWDecode   string // "", "1", "0"
 }
 
 func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSettings, opts HLSOptions) (string, error) {
@@ -265,7 +266,13 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 	if preset == "" {
 		preset = "veryfast"
 	}
-	sessKey := fmt.Sprintf("%s_%s_%s_%s_%ds", item.Guid, qualityKey, codec, container, segSec)
+	useHWDecode := !cfg.DisableHWDecode
+	if opts.HWDecode == "0" {
+		useHWDecode = false
+	} else if opts.HWDecode == "1" {
+		useHWDecode = true
+	}
+	sessKey := fmt.Sprintf("%s_%s_%s_%s_%ds_hw%v", item.Guid, qualityKey, codec, container, segSec, useHWDecode && t.hasVAAPI && cfg.EnableVAAPI)
 
 	t.mu.Lock()
 	if sess, ok := t.sessions[sessKey]; ok {
@@ -316,12 +323,25 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 		if codec == "hevc" {
 			vEncoder = "hevc_vaapi"
 		}
-		scaleFilter := fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", prof.Height)
-		args = []string{
-			"-y", "-vaapi_device", "/dev/dri/renderD128",
-			"-i", item.FilePath,
-			"-vf", scaleFilter,
-			"-c:v", vEncoder,
+		if useHWDecode {
+			// 全链路 VAAPI 硬件解码 + 硬件缩放 + 硬件编码（零拷贝，速度 5x-15x）
+			scaleFilter := fmt.Sprintf("scale_vaapi=w=-2:h=%d:format=nv12", prof.Height)
+			args = []string{
+				"-y", "-hwaccel", "vaapi",
+				"-hwaccel_device", "/dev/dri/renderD128",
+				"-hwaccel_output_format", "vaapi",
+				"-i", item.FilePath,
+				"-vf", scaleFilter,
+				"-c:v", vEncoder,
+			}
+		} else {
+			scaleFilter := fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", prof.Height)
+			args = []string{
+				"-y", "-vaapi_device", "/dev/dri/renderD128",
+				"-i", item.FilePath,
+				"-vf", scaleFilter,
+				"-c:v", vEncoder,
+			}
 		}
 		if codec == "hevc" {
 			args = append(args, "-tag:v", "hvc1")

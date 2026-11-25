@@ -21,6 +21,7 @@ type User struct {
 type ServerSettings struct {
 	ServerName       string `json:"server_name"`
 	EnableVAAPI      bool   `json:"enable_vaapi"`
+	DisableHWDecode  bool   `json:"disable_hwdecode"`   // false=enable full VAAPI hwaccel decode+encode
 	TranscodePreset  string `json:"transcode_preset"`   // ultrafast, veryfast, fast, medium
 	TranscodeCodec   string `json:"transcode_codec"`    // h264, hevc
 	HLSContainer     string `json:"hls_container"`      // ts, fmp4

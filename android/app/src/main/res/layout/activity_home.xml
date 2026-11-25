@@ -1026,6 +1026,96 @@ DPAD 遥控器友好
                                 android:textSize="14sp" />
                         </RelativeLayout>
 
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 16. 本地视频环形缓存 (150MB SimpleCache) -->
+                        <RelativeLayout
+                            android:id="@+id/rlVideoCacheSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="本地视频环形缓存"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvVideoCacheValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="已开启 (150MB)"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 17. HLS 切片并发预取 -->
+                        <RelativeLayout
+                            android:id="@+id/rlHlsPrefetchSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="HLS 切片并发预取"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvHlsPrefetchValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="已开启 (提前拉2片)"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 18. NAS 服务端 VAAPI 全硬解转码 -->
+                        <RelativeLayout
+                            android:id="@+id/rlServerHwDecodeSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="NAS 全硬件解码转码"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvServerHwDecodeValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="已开启 (VAAPI 零拷贝)"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
                     </LinearLayout>
 
                     <!-- 关于 -->

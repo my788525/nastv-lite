@@ -39,15 +39,17 @@ public class OkHttpExoDataSource extends BaseDataSource {
         Request.Builder builder = new Request.Builder()
                 .url(dataSpec.uri.toString());
 
-        // 分块模式：每次只请求 chunkSize 字节（如 10MB），避免云盘风控
+        String uriStr = dataSpec.uri.toString();
+        boolean isHlsSegmentOrPlaylist = uriStr.contains("/v/api/v1/hls/");
         long rangeEnd = -1;
         if (chunkSize > 0 && dataSpec.length > chunkSize) {
             rangeEnd = dataSpec.position + chunkSize - 1;
         }
-        String range = rangeEnd > 0
-                ? "bytes=" + dataSpec.position + "-" + rangeEnd
-                : "bytes=" + dataSpec.position + "-";
-        builder.header("Range", range);
+        if (rangeEnd > 0) {
+            builder.header("Range", "bytes=" + dataSpec.position + "-" + rangeEnd);
+        } else if (!isHlsSegmentOrPlaylist || dataSpec.position > 0) {
+            builder.header("Range", "bytes=" + dataSpec.position + "-");
+        }
         builder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
         // 云盘直链 Cookie

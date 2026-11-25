@@ -510,6 +510,7 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 	codecQ := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("codec")))
 	containerQ := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("container")))
 	segQ, _ := strconv.Atoi(r.URL.Query().Get("seg"))
+	hwdecQ := strings.TrimSpace(r.URL.Query().Get("hwdecode"))
 	if quality == "auto" && (file == "master.m3u8" || file == "index.m3u8") {
 		var qs []string
 		if t := r.URL.Query().Get("token"); t != "" {
@@ -523,6 +524,9 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 		}
 		if segQ > 0 {
 			qs = append(qs, fmt.Sprintf("seg=%d", segQ))
+		}
+		if hwdecQ != "" {
+			qs = append(qs, "hwdecode="+hwdecQ)
 		}
 		suffix := ""
 		if len(qs) > 0 {
@@ -547,6 +551,7 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 		Codec:      codecQ,
 		Container:  containerQ,
 		SegmentSec: segQ,
+		HWDecode:   hwdecQ,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

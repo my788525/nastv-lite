@@ -102,11 +102,13 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
     private RelativeLayout rlPlayModeSetting, rlScreenOffSetting, rlAutoResumeSetting, rlPinyinSearchSetting,
             rlMenuPanelSetting, rlDpadAccelSetting, rlSleepTimerSetting, rlVocalBoostSetting,
             rlDefaultQualitySetting, rlBufferProfileSetting, rlWeakNetRetrySetting,
-            rlVideoCodecSetting, rlHlsContainerSetting, rlHlsSegSetting, rlHttpGzipSetting;
+            rlVideoCodecSetting, rlHlsContainerSetting, rlHlsSegSetting, rlHttpGzipSetting,
+            rlVideoCacheSetting, rlHlsPrefetchSetting, rlServerHwDecodeSetting;
     private TextView tvPlayModeValue, tvScreenOffValue, tvAutoResumeValue, tvPinyinSearchValue,
             tvMenuPanelValue, tvDpadAccelValue, tvSleepTimerValue, tvVocalBoostValue,
             tvDefaultQualityValue, tvBufferProfileValue, tvWeakNetRetryValue,
-            tvVideoCodecValue, tvHlsContainerValue, tvHlsSegValue, tvHttpGzipValue;
+            tvVideoCodecValue, tvHlsContainerValue, tvHlsSegValue, tvHttpGzipValue,
+            tvVideoCacheValue, tvHlsPrefetchValue, tvServerHwDecodeValue;
     private boolean hasAutoResumedOnStartup = false;
     private final Map<String, String> libModeOverrides = new HashMap<>();
 
@@ -349,6 +351,12 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         tvHlsSegValue = findViewById(R.id.tvHlsSegValue);
         rlHttpGzipSetting = findViewById(R.id.rlHttpGzipSetting);
         tvHttpGzipValue = findViewById(R.id.tvHttpGzipValue);
+        rlVideoCacheSetting = findViewById(R.id.rlVideoCacheSetting);
+        tvVideoCacheValue = findViewById(R.id.tvVideoCacheValue);
+        rlHlsPrefetchSetting = findViewById(R.id.rlHlsPrefetchSetting);
+        tvHlsPrefetchValue = findViewById(R.id.tvHlsPrefetchValue);
+        rlServerHwDecodeSetting = findViewById(R.id.rlServerHwDecodeSetting);
+        tvServerHwDecodeValue = findViewById(R.id.tvServerHwDecodeValue);
         com.fntv.app.api.AuthInterceptor.enableGzip = prefs.getBoolean("pref_http_gzip", true);
 
         TextView tvVersion = findViewById(R.id.tvVersionName);
@@ -3897,6 +3905,51 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
                 com.fntv.app.api.AuthInterceptor.enableGzip = next;
                 if (tvHttpGzipValue != null) {
                     tvHttpGzipValue.setText(next ? "已开启 (省75%流量)" : "已关闭 (纯文本对照)");
+                }
+            });
+        }
+
+        // 16. 本地视频环形缓存
+        boolean curVCache = prefs.getBoolean("pref_video_cache", true);
+        if (tvVideoCacheValue != null) {
+            tvVideoCacheValue.setText(curVCache ? "已开启 (150MB 环形)" : "已关闭");
+        }
+        if (rlVideoCacheSetting != null) {
+            rlVideoCacheSetting.setOnClickListener(v -> {
+                boolean next = !prefs.getBoolean("pref_video_cache", true);
+                prefs.edit().putBoolean("pref_video_cache", next).apply();
+                if (tvVideoCacheValue != null) {
+                    tvVideoCacheValue.setText(next ? "已开启 (150MB 环形)" : "已关闭");
+                }
+            });
+        }
+
+        // 17. HLS 切片并发预取
+        boolean curPrefetch = prefs.getBoolean("pref_hls_prefetch", true);
+        if (tvHlsPrefetchValue != null) {
+            tvHlsPrefetchValue.setText(curPrefetch ? "已开启 (并发拉下2片)" : "已关闭");
+        }
+        if (rlHlsPrefetchSetting != null) {
+            rlHlsPrefetchSetting.setOnClickListener(v -> {
+                boolean next = !prefs.getBoolean("pref_hls_prefetch", true);
+                prefs.edit().putBoolean("pref_hls_prefetch", next).apply();
+                if (tvHlsPrefetchValue != null) {
+                    tvHlsPrefetchValue.setText(next ? "已开启 (并发拉下2片)" : "已关闭");
+                }
+            });
+        }
+
+        // 18. NAS 全硬件解码转码
+        boolean curHwDec = prefs.getBoolean("pref_server_hwdecode", true);
+        if (tvServerHwDecodeValue != null) {
+            tvServerHwDecodeValue.setText(curHwDec ? "已开启 (VAAPI 零拷贝)" : "已关闭 (CPU 解码+VAAPI)");
+        }
+        if (rlServerHwDecodeSetting != null) {
+            rlServerHwDecodeSetting.setOnClickListener(v -> {
+                boolean next = !prefs.getBoolean("pref_server_hwdecode", true);
+                prefs.edit().putBoolean("pref_server_hwdecode", next).apply();
+                if (tvServerHwDecodeValue != null) {
+                    tvServerHwDecodeValue.setText(next ? "已开启 (VAAPI 零拷贝)" : "已关闭 (CPU 解码+VAAPI)");
                 }
             });
         }
