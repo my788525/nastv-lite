@@ -40,11 +40,28 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
     private LinearLayout musicHubContainer;
     private Button btnTopBack, btnTopNowPlaying;
     private View miniPlayerBar, miniPlayerInfo;
+    private ProgressBar miniProgressBar;
     private ImageView ivMiniCover;
     private TextView tvMiniTitle, tvMiniSub;
     private Button btnMiniPrev, btnMiniPlayPause, btnMiniNext, btnMiniStop;
     private final Handler miniHandler = new Handler(Looper.getMainLooper());
+    private final Runnable miniProgressTask = new Runnable() {
+        @Override
+        public void run() {
+            MusicPlaybackService ms = MusicPlaybackService.getInstance();
+            if (ms != null && miniProgressBar != null && ms.getCurrentItem() != null) {
+                long dur = ms.getDuration();
+                long pos = ms.getCurrentPosition();
+                if (dur > 0) {
+                    miniProgressBar.setProgress((int) Math.min(1000L, Math.max(0L, pos * 1000L / dur)));
+                }
+                miniHandler.postDelayed(this, 500);
+            }
+        }
+    };
     private boolean musicHubBuilt = false;
+    private String selectedMusicLibGuid = null;
+    private boolean pendingNavRestore = false;
     private RemoteFileBrowser remoteFileBrowser;
     private LinearLayout moviesContainer, libraryContainer;
     /** 详情页渲染目标容器：影视标签用 moviesContainer；媒体库标签内（如文件夹兜底）用 libraryContainer，
@@ -225,7 +242,11 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         updateManager.setup();
         setupSearch();
 
-        switchTab(0);
+        int restoredTab = prefs.getInt("nav_last_tab", 0);
+        if (restoredTab < 0 || restoredTab > 4) restoredTab = 0;
+        String savedNavGuid = prefs.getString("nav_lib_guid", "");
+        pendingNavRestore = !savedNavGuid.isEmpty() && (restoredTab == 0 || restoredTab == 1);
+        switchTab(restoredTab);
         tvMoviesLoading.setVisibility(View.VISIBLE);
         tvMoviesLoading.setText("正在加载媒体库...");
         loadOverview();
@@ -248,6 +269,7 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         btnTopNowPlaying = findViewById(R.id.btnTopNowPlaying);
         miniPlayerBar = findViewById(R.id.miniPlayerBar);
         miniPlayerInfo = findViewById(R.id.miniPlayerInfo);
+        miniProgressBar = findViewById(R.id.miniProgressBar);
         ivMiniCover = findViewById(R.id.ivMiniCover);
         tvMiniTitle = findViewById(R.id.tvMiniTitle);
         tvMiniSub = findViewById(R.id.tvMiniSub);
@@ -264,6 +286,7 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
                 findViewById(R.id.btnFilesUp),
                 findViewById(R.id.btnFilesRefresh)
         );
+        remoteFileBrowser.setOnPathChangedListener(this::updateTopBarState);
         moviesContainer = findViewById(R.id.moviesGridContainer);
         libraryContainer = findViewById(R.id.libraryGridContainer);
         detailContainer = moviesContainer;
@@ -341,18 +364,25 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         if (ms != null) ms.addListener(this);
         updateMiniPlayer();
         updateTopBarState();
+        miniHandler.removeCallbacks(miniProgressTask);
+        if (ms != null && ms.getCurrentItem() != null) {
+            miniHandler.post(miniProgressTask);
+        }
+        // 仅在容器为空时才重建，避免从视频/歌曲退出时重置滚动条与当前浏览位置
         if (savedDetailItem != null) {
-            buildDetailPage(savedDetailItem, savedDetailInfo);
+            if (detailContainer == null || detailContainer.getChildCount() == 0) {
+                buildDetailPage(savedDetailItem, savedDetailInfo);
+            }
         } else if (currentTab == 0 && !mediaLibraries.isEmpty() && overviewBuilt && showingOverview) {
-            loadingPreviews = false;
-            showOverview();
-            loadAllPreviews();
             loadContinueWatching();
-            loadLiveChannels();
-        } else if (currentTab == 0 && !overviewBuilt && showingOverview) {
+        } else if (currentTab == 0 && !overviewBuilt && showingOverview && mediaLibraries.isEmpty()) {
             loadOverview();
         } else if (currentTab == 4) {
-            buildMusicHub();
+            if (!musicHubBuilt && !mediaLibraries.isEmpty()) {
+                buildMusicHub();
+            } else {
+                refreshMusicHubHighlight();
+            }
         } else if (mediaLibraries.isEmpty()) {
             if (currentTab == 1) loadMediaLibraries();
             else loadOverview();
@@ -362,15 +392,35 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
     @Override
     protected void onPause() {
         super.onPause();
+        miniHandler.removeCallbacks(miniProgressTask);
         MusicPlaybackService ms = MusicPlaybackService.getInstance();
         if (ms != null) ms.removeListener(this);
+        saveNavState();
     }
 
 
     private void setupTabs() {
-        tabMovies.setOnClickListener(v -> switchTab(0));
+        tabMovies.setOnClickListener(v -> {
+            if (currentTab == 0 && !showingOverview) {
+                showOverview();
+                loadAllPreviews();
+                loadContinueWatching();
+                loadLiveChannels();
+            } else {
+                switchTab(0);
+            }
+        });
         if (tabMusic != null) tabMusic.setOnClickListener(v -> switchTab(4));
-        tabLibrary.setOnClickListener(v -> { switchTab(1); loadMediaLibraries(); });
+        tabLibrary.setOnClickListener(v -> {
+            boolean alreadyHere = (currentTab == 1);
+            switchTab(1);
+            if (alreadyHere || (savedBrowseGuid == null && libraryContainer.getChildCount() <= 2)) {
+                savedBrowseGuid = null;
+                savedBrowseList = null;
+                folderNavStack.clear();
+                loadMediaLibraries();
+            }
+        });
         if (tabFiles != null) tabFiles.setOnClickListener(v -> switchTab(2));
         tabSettings.setOnClickListener(v -> switchTab(3));
     }
@@ -379,10 +429,9 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
     private void switchTab(int index) {
         int prevTab = currentTab;
         currentTab = index;
-        // 从媒体库切换到其他标签时清除搜索状态
+        // 从媒体库切换到其他标签时仅清除搜索框焦点，不丢失浏览路径
         if (prevTab == 1 && isSearching) clearSearch();
-        // 切换标签时清除保存的页面状态，防止横竖屏切回时错误恢复
-        savedBrowseList = null; savedBrowseGuid = null;
+        if (prefs != null) prefs.edit().putInt("nav_last_tab", index).apply();
         panelMovies.setVisibility(index == 0 ? View.VISIBLE : View.GONE);
         if (panelMusic != null) panelMusic.setVisibility(index == 4 ? View.VISIBLE : View.GONE);
         panelLibrary.setVisibility(index == 1 ? View.VISIBLE : View.GONE);
@@ -397,9 +446,14 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         if (index == 0) tabMovies.requestFocus();
         else if (index == 4) {
             if (tabMusic != null) tabMusic.requestFocus();
-            buildMusicHub();
-        } else if (index == 1) tabLibrary.requestFocus();
-        else if (index == 2) {
+            if (!musicHubBuilt) buildMusicHub();
+            else refreshMusicHubHighlight();
+        } else if (index == 1) {
+            tabLibrary.requestFocus();
+            if (libraryContainer.getChildCount() <= 2 && savedBrowseGuid == null) {
+                loadMediaLibraries();
+            }
+        } else if (index == 2) {
             if (tabFiles != null) tabFiles.requestFocus();
             if (remoteFileBrowser != null) remoteFileBrowser.ensureLoaded();
         } else tabSettings.requestFocus();
@@ -446,6 +500,13 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
                     loadAllPreviews();
                     loadContinueWatching();
                     loadLiveChannels();
+                    if (currentTab == 4 && !musicHubBuilt) {
+                        buildMusicHub();
+                    }
+                    if (pendingNavRestore) {
+                        pendingNavRestore = false;
+                        restoreNavState();
+                    }
                 } else {
                     tvMoviesLoading.setVisibility(View.GONE);
                 }
@@ -603,8 +664,9 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         continueBox.setTag("continue_watching");
         moviesContainer.addView(continueBox);
 
-        // 媒体库文件夹列表
+        // 媒体库文件夹列表（影视模式自动过滤纯音乐库，保持影院界面纯粹）
         for (MediaDbItem lib : mediaLibraries) {
+            if (isMusicLibrary(lib)) continue;
             moviesContainer.addView(makeLibFolderRow(lib));
             moviesContainer.addView(makeSpacer(6));
         }
@@ -1182,6 +1244,7 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         browseFromLibrary = (container == libraryContainer);
         if (browseFromLibrary) etSearch.setVisibility(View.GONE);
         if (container == moviesContainer) showingOverview = false;
+        saveNavState();
         updateTopBarState();
 
         // 存储当前浏览上下文，排序变化时用于重新加载
@@ -1685,8 +1748,10 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
             if (browseFromLibrary) {
                 savedBrowseGuid = null;
                 savedBrowseList = null;
+                saveNavState();
                 loadMediaLibraries();
             } else {
+                saveNavState();
                 loadOverview();
             }
         }
@@ -3867,7 +3932,8 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         }
         if (btnTopBack != null) {
             boolean canGoBack = showingDetail || showingEpisodes || isSearching || !folderNavStack.isEmpty()
-                    || ((currentTab == 0 || currentTab == 1) && savedBrowseGuid != null);
+                    || ((currentTab == 0 || currentTab == 1) && savedBrowseGuid != null)
+                    || (currentTab == 2 && remoteFileBrowser != null && remoteFileBrowser.canGoBack());
             btnTopBack.setVisibility(canGoBack ? View.VISIBLE : View.GONE);
         }
     }
@@ -3909,7 +3975,12 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
 
     @Override
     public void onTrackChanged(PlayListItem item, int index, int total) {
-        miniHandler.post(this::updateMiniPlayer);
+        miniHandler.post(() -> {
+            updateMiniPlayer();
+            refreshMusicHubHighlight();
+            miniHandler.removeCallbacks(miniProgressTask);
+            miniHandler.post(miniProgressTask);
+        });
     }
 
     @Override
@@ -3930,8 +4001,114 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         });
     }
 
+    private boolean isMusicLibrary(MediaDbItem lib) {
+        if (lib == null) return false;
+        String cat = lib.category != null ? lib.category.toLowerCase() : "";
+        String mode = lib.mode != null ? lib.mode.toLowerCase() : "";
+        String title = lib.title != null ? lib.title.toLowerCase() : "";
+        return "music".equals(mode) || "audio".equals(cat) || "music".equals(cat)
+                || title.contains("音乐") || title.contains("music") || title.contains("歌");
+    }
+
+    private void saveNavState() {
+        if (prefs == null) return;
+        SharedPreferences.Editor ed = prefs.edit();
+        ed.putInt("nav_last_tab", currentTab);
+        ed.putString("nav_music_lib_guid", selectedMusicLibGuid != null ? selectedMusicLibGuid : "");
+        if (savedBrowseGuid != null && !savedBrowseGuid.isEmpty()) {
+            ed.putString("nav_lib_guid", savedBrowseGuid);
+            ed.putString("nav_lib_title", savedBrowseTitle != null ? savedBrowseTitle : "");
+            ed.putBoolean("nav_lib_is_folder", currentBrowseParentIsFolder);
+            ed.putString("nav_lib_single_child", currentBrowseSingleChildGuid != null ? currentBrowseSingleChildGuid : "");
+            try {
+                org.json.JSONArray arr = new org.json.JSONArray();
+                for (FolderNavState st : folderNavStack) {
+                    org.json.JSONObject o = new org.json.JSONObject();
+                    o.put("guid", st.guid != null ? st.guid : "");
+                    o.put("title", st.title != null ? st.title : "");
+                    o.put("singleChildGuid", st.singleChildGuid != null ? st.singleChildGuid : "");
+                    o.put("parentIsFolder", st.parentIsFolder);
+                    arr.put(o);
+                }
+                ed.putString("nav_folder_stack", arr.toString());
+            } catch (Exception ignored) {}
+        } else {
+            ed.remove("nav_lib_guid");
+            ed.remove("nav_lib_title");
+            ed.remove("nav_lib_is_folder");
+            ed.remove("nav_lib_single_child");
+            ed.remove("nav_folder_stack");
+        }
+        ed.apply();
+    }
+
+    private void restoreNavState() {
+        if (prefs == null) return;
+        String guid = prefs.getString("nav_lib_guid", "");
+        if (guid == null || guid.isEmpty()) return;
+        String title = prefs.getString("nav_lib_title", "");
+        boolean isFolder = prefs.getBoolean("nav_lib_is_folder", true);
+        String singleChild = prefs.getString("nav_lib_single_child", "");
+        folderNavStack.clear();
+        try {
+            String stackJson = prefs.getString("nav_folder_stack", "[]");
+            org.json.JSONArray arr = new org.json.JSONArray(stackJson);
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject o = arr.getJSONObject(i);
+                String sg = o.optString("singleChildGuid", "");
+                folderNavStack.add(new FolderNavState(
+                        o.optString("guid", ""),
+                        o.optString("title", ""),
+                        sg.isEmpty() ? null : sg,
+                        o.optBoolean("parentIsFolder", true),
+                        null));
+            }
+        } catch (Exception ignored) {}
+        LinearLayout targetContainer = (currentTab == 1) ? libraryContainer : moviesContainer;
+        TextView targetLoading = (currentTab == 1) ? tvLibraryLoading : tvMoviesLoading;
+        browseItemsInContainer(guid, title, targetContainer, targetLoading,
+                singleChild.isEmpty() ? null : singleChild, isFolder);
+    }
+
+    private void refreshMusicHubHighlight() {
+        if (musicHubContainer == null) return;
+        MusicPlaybackService ms = MusicPlaybackService.getInstance();
+        String playingGuid = (ms != null && ms.getCurrentItem() != null) ? ms.getCurrentItem().guid : null;
+        for (int i = 0; i < musicHubContainer.getChildCount(); i++) {
+            View child = musicHubContainer.getChildAt(i);
+            if (child instanceof LinearLayout) {
+                LinearLayout box = (LinearLayout) child;
+                for (int j = 0; j < box.getChildCount(); j++) {
+                    View row = box.getChildAt(j);
+                    Object tag = row.getTag();
+                    if (tag instanceof String && row instanceof LinearLayout) {
+                        boolean isCur = playingGuid != null && playingGuid.equals(tag);
+                        LinearLayout lr = (LinearLayout) row;
+                        if (lr.getChildCount() >= 2 && lr.getChildAt(0) instanceof TextView && lr.getChildAt(1) instanceof TextView) {
+                            TextView numTv = (TextView) lr.getChildAt(0);
+                            TextView titleTv = (TextView) lr.getChildAt(1);
+                            if (isCur) {
+                                numTv.setText("▶");
+                                numTv.setTextColor(0xFF34D399);
+                                titleTv.setTextColor(0xFF34D399);
+                                lr.setBackgroundColor(0xFF0F2922);
+                            } else {
+                                Object idxObj = numTv.getTag();
+                                if (idxObj instanceof String) numTv.setText((String) idxObj);
+                                numTv.setTextColor(0xFF64748B);
+                                titleTv.setTextColor(0xFFF8FAFC);
+                                lr.setBackgroundResource(R.drawable.bg_card);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private void buildMusicHub() {
         if (musicHubContainer == null) return;
+        musicHubBuilt = true;
         musicHubContainer.removeAllViews();
         float d = getResources().getDisplayMetrics().density;
 
@@ -4178,6 +4355,7 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
                     final int idx = i;
                     final PlayListItem song = songs.get(i);
                     LinearLayout row = new LinearLayout(HomeActivity.this);
+                    row.setTag(song.guid);
                     row.setOrientation(LinearLayout.HORIZONTAL);
                     row.setGravity(Gravity.CENTER_VERTICAL);
                     row.setBackgroundResource(R.drawable.bg_card);
@@ -4190,7 +4368,9 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
                     row.setLayoutParams(lp);
 
                     TextView num = new TextView(HomeActivity.this);
-                    num.setText(String.valueOf(i + 1));
+                    String numStr = String.valueOf(i + 1);
+                    num.setText(numStr);
+                    num.setTag(numStr);
                     num.setTextColor(0xFF64748B);
                     num.setTextSize(12);
                     num.setWidth((int)(28*d));
@@ -4220,6 +4400,7 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
                     });
                     container.addView(row);
                 }
+                refreshMusicHubHighlight();
             }
             @Override
             public void onFailure(Call<ApiResponse<ItemListResponse>> call, Throwable t) {

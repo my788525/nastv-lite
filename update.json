@@ -8,10 +8,10 @@
     "changelog": "NASFun 服务端 v1.5.8：\n1. 新增纯音频实时 HLS 流媒体分片（audio_96 / audio_128 / audio_192 / audio_320），2 秒极速切片边转边播，大体积 FLAC/APE 秒开播放不再等待整首转码。"
   },
   "android": {
-    "versionCode": 19,
-    "versionName": "1.5.9",
-    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.9/NASFun_v1.5.9.apk",
-    "changelog": "NASFun 客户端 v1.5.9（兼容 Android 4.4+）：\n1. 修复切出应用再切回时重新走登录页的问题：保留任务栈并支持 Token 秒级直入主页。\n2. 新增全局常驻「正在播放」迷你控制条（封面/歌名/状态/上一首/播放暂停/下一首/停止），随时一键进入歌词播放器。\n3. 新增独立「音乐」模式页面，支持顺序/随机全部播放、本地离线曲库直达与在线码率切换。\n4. 新增顶部上下文返回按钮与深空影视/翡翠音乐双模式视觉优化，播放影视时自动暂停后台音乐。",
+    "versionCode": 20,
+    "versionName": "1.5.10",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.10/NASFun_v1.5.10.apk",
+    "changelog": "NASFun 客户端 v1.5.10（兼容 Android 4.4+）：\n1. 修复退出歌曲/视频时页面恢复到根目录的问题：完整记忆并恢复当前 Tab、媒体库子目录栈、远程文件目录与滚动位置。\n2. 音乐模式升级：歌曲列表实时高亮当前正在播放的曲目，影视主页自动过滤纯音乐库，迷你控制条新增实时进度细线。\n3. 远程文件浏览器支持路径记忆与顶部栏返回。",
     "forceUpdate": false
   }
 }

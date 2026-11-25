@@ -48,6 +48,15 @@ public class RemoteFileBrowser {
     private String currentPath = "";
     private String parentPath = "";
     private boolean loadedOnce = false;
+    private Runnable onPathChangedListener;
+
+    public void setOnPathChangedListener(Runnable listener) {
+        this.onPathChangedListener = listener;
+    }
+
+    public boolean canGoBack() {
+        return currentPath != null && !currentPath.isEmpty();
+    }
 
     public RemoteFileBrowser(Activity activity, String baseUrl,
                              LinearLayout container, TextView tvPath,
@@ -70,7 +79,9 @@ public class RemoteFileBrowser {
     public void ensureLoaded() {
         if (!loadedOnce) {
             loadedOnce = true;
-            loadDirectory("");
+            String savedPath = activity.getSharedPreferences("fntv_prefs", android.content.Context.MODE_PRIVATE)
+                    .getString("nav_files_path", "");
+            loadDirectory(savedPath != null ? savedPath : "");
         }
     }
 
@@ -116,6 +127,8 @@ public class RemoteFileBrowser {
                     activity.runOnUiThread(() -> {
                         currentPath = cur;
                         parentPath = par;
+                        activity.getSharedPreferences("fntv_prefs", android.content.Context.MODE_PRIVATE)
+                                .edit().putString("nav_files_path", cur != null ? cur : "").apply();
                         if (tvPath != null) {
                             tvPath.setText(cur.isEmpty() ? "远程目录：授权根目录" : ("远程目录：" + cur));
                         }
@@ -124,6 +137,7 @@ public class RemoteFileBrowser {
                             btnUp.setAlpha(cur.isEmpty() ? 0.5f : 1.0f);
                         }
                         renderEntries(entries);
+                        if (onPathChangedListener != null) onPathChangedListener.run();
                     });
                 }
             } catch (Exception e) {
