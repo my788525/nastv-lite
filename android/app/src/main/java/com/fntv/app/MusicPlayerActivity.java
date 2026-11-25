@@ -412,8 +412,30 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
 
     private void toggleFloatingLyrics() {
         if (FloatingLyricsService.isRunning()) {
-            stopService(new Intent(this, FloatingLyricsService.class));
-            updateFloatingBtnState();
+            final boolean pt = FloatingLyricsService.isPassThrough(this);
+            String[] opts = {
+                    pt ? "✋ 关闭穿透模式（恢复浮窗可点击/拖动）" : "👻 开启穿透模式（触摸直接透传到下层窗口）",
+                    "🪟 关闭悬浮歌词"
+            };
+            new AlertDialog.Builder(this)
+                    .setTitle("悬浮歌词设置")
+                    .setItems(opts, new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            if (which == 0) {
+                                boolean next = !pt;
+                                FloatingLyricsService.setPassThrough(MusicPlayerActivity.this, next);
+                                Toast.makeText(MusicPlayerActivity.this,
+                                        next ? "已开启穿透：悬浮窗将不再拦截点击" : "已关闭穿透：悬浮窗可正常拖动/点击",
+                                        Toast.LENGTH_SHORT).show();
+                                updateFloatingBtnState();
+                            } else {
+                                stopService(new Intent(MusicPlayerActivity.this, FloatingLyricsService.class));
+                                updateFloatingBtnState();
+                            }
+                        }
+                    })
+                    .show();
             return;
         }
         if (!FloatingLyricsService.canDraw(this)) {
@@ -443,7 +465,8 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
 
     private void updateFloatingBtnState() {
         boolean on = FloatingLyricsService.isRunning();
-        btnFloatLyrics.setText(on ? "🪟 悬浮歌词:开" : "🪟 悬浮歌词:关");
+        boolean pt = FloatingLyricsService.isPassThrough(this);
+        btnFloatLyrics.setText(on ? (pt ? "🪟 悬浮:穿透" : "🪟 悬浮歌词:开") : "🪟 悬浮歌词:关");
         btnFloatLyrics.setBackground(makeFocusDrawable(on ? "#0284C7" : "#1E293B", 16));
     }
 

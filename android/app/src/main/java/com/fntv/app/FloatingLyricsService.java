@@ -38,13 +38,28 @@ public class FloatingLyricsService extends Service {
     private static final String PREF_Y = "float_lrc_y";
     private static final String PREF_TIER = "float_lrc_tier";
     private static final String PREF_LOCKED = "float_lrc_locked";
+    public static final String PREF_PASSTHROUGH = "float_lrc_passthrough";
+    public static final String ACTION_REFRESH_FLAGS = "com.fntv.app.FLOAT_REFRESH_FLAGS";
 
     public static final int TIER_LYRICS_ONLY = 0;
     public static final int TIER_COMPACT = 1;
     public static final int TIER_FULL = 2;
 
+    private static FloatingLyricsService instance;
     private static boolean running = false;
     public static boolean isRunning() { return running; }
+
+    public static boolean isPassThrough(Context ctx) {
+        return ctx != null && ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).getBoolean(PREF_PASSTHROUGH, false);
+    }
+
+    public static void setPassThrough(Context ctx, boolean enable) {
+        if (ctx == null) return;
+        ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).edit().putBoolean(PREF_PASSTHROUGH, enable).apply();
+        if (instance != null) {
+            instance.applyPassThrough(enable);
+        }
+    }
 
     public static boolean canDraw(Context ctx) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -68,6 +83,7 @@ public class FloatingLyricsService extends Service {
 
     private int tier = TIER_LYRICS_ONLY;
     private boolean locked = false;
+    private boolean passThrough = false;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private String lastCoverGuid = "";
 
@@ -82,14 +98,17 @@ public class FloatingLyricsService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        instance = this;
         running = true;
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         SharedPreferences sp = getSharedPreferences("fntv_prefs", MODE_PRIVATE);
         tier = sp.getInt(PREF_TIER, TIER_LYRICS_ONLY);
         locked = sp.getBoolean(PREF_LOCKED, false);
+        passThrough = sp.getBoolean(PREF_PASSTHROUGH, false);
 
         buildOverlayView();
         applyTierLayout();
+        applyPassThrough(passThrough);
         handler.post(tickRunnable);
     }
 
@@ -125,6 +144,13 @@ public class FloatingLyricsService extends Service {
 
         header.addView(makeIconBtn("🪟", new View.OnClickListener() {
             @Override public void onClick(View v) { cycleTier(); }
+        }));
+        header.addView(makeIconBtn("👻", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                setPassThrough(FloatingLyricsService.this, true);
+                android.widget.Toast.makeText(FloatingLyricsService.this,
+                        "已开启穿透模式（可在播放器“悬浮歌词”按钮中关闭）", android.widget.Toast.LENGTH_SHORT).show();
+            }
         }));
         btnLock = makeIconBtn(locked ? "🔒" : "🔓", new View.OnClickListener() {
             @Override public void onClick(View v) { toggleLock(); }
@@ -263,6 +289,24 @@ public class FloatingLyricsService extends Service {
         if (btnLock != null) btnLock.setText(locked ? "🔒" : "🔓");
     }
 
+    private void applyPassThrough(boolean enable) {
+        passThrough = enable;
+        if (lp == null || rootLayout == null || windowManager == null) return;
+        if (enable) {
+            lp.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        } else {
+            lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        }
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(enable ? 0x800B1120 : 0xCC0B1120);
+        bg.setCornerRadius(dp(14));
+        bg.setStroke(dp(1), enable ? 0x2238BDF8 : 0x4438BDF8);
+        rootLayout.setBackground(bg);
+        try {
+            windowManager.updateViewLayout(rootLayout, lp);
+        } catch (Exception ignored) {}
+    }
+
     private void applyTierLayout() {
         if (tier == TIER_LYRICS_ONLY) {
             headerRow.setVisibility(View.GONE);
@@ -332,6 +376,7 @@ public class FloatingLyricsService extends Service {
 
     @Override
     public void onDestroy() {
+        instance = null;
         running = false;
         handler.removeCallbacks(tickRunnable);
         if (windowManager != null && rootLayout != null) {

@@ -8,10 +8,10 @@
     "changelog": "NASFun 服务端 v1.5.14：\n1. 新增全链路 VAAPI 硬件解码+编码零拷贝（-hwaccel vaapi -hwaccel_output_format vaapi），10GB+ 大体积 4K/1080P 视频转码速度提升 3-5 倍，支持客户端按需开关。"
   },
   "android": {
-    "versionCode": 24,
-    "versionName": "1.5.14",
-    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.14/NASFun_v1.5.14.apk",
-    "changelog": "NASFun 客户端 v1.5.14（兼容 Android 4.4+，对标飞牛弱网流畅度）：\n1. 新增 150MB 本地视频环形缓存（SimpleCache），闪断/回拉秒读本地。\n2. 新增 HLS 切片后台 2 路并发预取（请求第 N 片时自动提前拉取 N+1/N+2 片），消除移动网 RTT 空窗。\n3. 联动服务端 VAAPI 全硬件解码转码，并在设置页提供 3 项独立开关供不同网络/设备测试。",
+    "versionCode": 25,
+    "versionName": "1.5.15",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.15/NASFun_v1.5.15.apk",
+    "changelog": "NASFun 客户端 v1.5.15（兼容 Android 4.4+）：\n1. 音乐悬浮歌词/迷你浮窗新增可选「👻 穿透模式」（FLAG_NOT_TOUCHABLE）：开启后浮窗不再拦截触摸与点击，操作直接透传到下层导航/其他应用，同时半透明化提示。\n2. 可直接在浮窗顶栏点击 👻 开启穿透，或在音乐播放器「悬浮歌词」按钮菜单中随时开关穿透或关闭浮窗。",
     "forceUpdate": false
   }
 }
