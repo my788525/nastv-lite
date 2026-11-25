@@ -541,6 +541,30 @@ func (app *App) handleAdminCacheClear(w http.ResponseWriter, r *http.Request) {
 	okResp(w, map[string]bool{"cleared": true})
 }
 
+func (app *App) handleAdminAudioPrewarm(w http.ResponseWriter, r *http.Request) {
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	q := r.URL.Query().Get("quality")
+	if q == "" {
+		q = app.store.GetSettings().PrewarmAudioQuality
+	}
+	if q == "" {
+		q = "audio_320"
+	}
+	if r.Method == http.MethodPost {
+		go app.transcoder.PrewarmAllAudioCache(app.store, q)
+	}
+	total, cached, bytes, running := app.transcoder.GetAudioCacheStats(app.store, q)
+	okResp(w, map[string]interface{}{
+		"quality":      q,
+		"total_audio":  total,
+		"cached_audio": cached,
+		"cache_bytes":  bytes,
+		"running":      running,
+	})
+}
+
 func (app *App) handleAdminLogs(w http.ResponseWriter, r *http.Request) {
 	if app.requireAdmin(w, r) == nil {
 		return

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -44,31 +45,37 @@ func FindQualityProfile(key string) *QualityProfile {
 }
 
 type HLSSession struct {
-	Key        string
-	Dir        string
-	Cmd        *exec.Cmd
-	LastAccess time.Time
+	Key          string
+	Dir          string
+	Cmd          *exec.Cmd
+	LastAccess   time.Time
+	AudioPersist bool
 }
 
 type Transcoder struct {
-	ffmpegPath  string
-	ffprobePath string
-	hasVAAPI    bool
-	thumbDir    string
-	hlsRoot     string
-	mu          sync.Mutex
-	sessions    map[string]*HLSSession
+	ffmpegPath     string
+	ffprobePath    string
+	hasVAAPI       bool
+	thumbDir       string
+	audioCacheDir  string
+	hlsRoot        string
+	mu             sync.Mutex
+	sessions       map[string]*HLSSession
+	prewarmMu      sync.Mutex
+	prewarmRunning bool
 }
 
 func NewTranscoder(dataDir string) *Transcoder {
 	t := &Transcoder{
-		ffmpegPath:  findBinary("ffmpeg", []string{"/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/trim/bin/ffmpeg"}),
-		ffprobePath: findBinary("ffprobe", []string{"/usr/bin/ffprobe", "/usr/local/bin/ffprobe", "/usr/trim/bin/ffprobe"}),
-		thumbDir:    filepath.Join(dataDir, "thumbs"),
-		hlsRoot:     filepath.Join(os.TempDir(), "nastv_hls"),
-		sessions:    make(map[string]*HLSSession),
+		ffmpegPath:    findBinary("ffmpeg", []string{"/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/trim/bin/ffmpeg"}),
+		ffprobePath:   findBinary("ffprobe", []string{"/usr/bin/ffprobe", "/usr/local/bin/ffprobe", "/usr/trim/bin/ffprobe"}),
+		thumbDir:      filepath.Join(dataDir, "thumbs"),
+		audioCacheDir: filepath.Join(dataDir, "audio_hls_cache"),
+		hlsRoot:       filepath.Join(os.TempDir(), "nastv_hls"),
+		sessions:      make(map[string]*HLSSession),
 	}
 	_ = os.MkdirAll(t.thumbDir, 0755)
+	_ = os.MkdirAll(t.audioCacheDir, 0755)
 	_ = os.MkdirAll(t.hlsRoot, 0755)
 	if _, err := os.Stat("/dev/dri/renderD128"); err == nil {
 		t.hasVAAPI = true
@@ -96,11 +103,17 @@ func (t *Transcoder) cleanupLoop() {
 		t.mu.Lock()
 		now := time.Now()
 		for k, sess := range t.sessions {
-			if now.Sub(sess.LastAccess) > 3*time.Minute {
+			ttl := 3 * time.Minute
+			if sess.AudioPersist {
+				ttl = 10 * time.Minute
+			}
+			if now.Sub(sess.LastAccess) > ttl {
 				if sess.Cmd != nil && sess.Cmd.Process != nil {
 					_ = sess.Cmd.Process.Kill()
 				}
-				_ = os.RemoveAll(sess.Dir)
+				if !sess.AudioPersist {
+					_ = os.RemoveAll(sess.Dir)
+				}
 				delete(t.sessions, k)
 			}
 		}
@@ -272,7 +285,18 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 	} else if opts.HWDecode == "1" {
 		useHWDecode = true
 	}
+	audioPersist := prof.AudioOnly && !cfg.DisableAudioCache
 	sessKey := fmt.Sprintf("%s_%s_%s_%s_%ds_hw%v", item.Guid, qualityKey, codec, container, segSec, useHWDecode && t.hasVAAPI && cfg.EnableVAAPI)
+	if prof.AudioOnly {
+		sessKey = item.Guid + "_" + qualityKey
+	}
+
+	if audioPersist {
+		persistDir := filepath.Join(t.audioCacheDir, sessKey)
+		if isCompletedHLS(filepath.Join(persistDir, "index.m3u8")) {
+			return persistDir, nil
+		}
+	}
 
 	t.mu.Lock()
 	if sess, ok := t.sessions[sessKey]; ok {
@@ -282,6 +306,9 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 		return dir, nil
 	}
 	sessDir := filepath.Join(t.hlsRoot, sessKey)
+	if audioPersist {
+		sessDir = filepath.Join(t.audioCacheDir, sessKey)
+	}
 	_ = os.RemoveAll(sessDir)
 	if err := os.MkdirAll(sessDir, 0755); err != nil {
 		t.mu.Unlock()
@@ -395,10 +422,11 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 		return "", err
 	}
 	t.sessions[sessKey] = &HLSSession{
-		Key:        sessKey,
-		Dir:        sessDir,
-		Cmd:        cmd,
-		LastAccess: time.Now(),
+		Key:          sessKey,
+		Dir:          sessDir,
+		Cmd:          cmd,
+		LastAccess:   time.Now(),
+		AudioPersist: audioPersist,
 	}
 	go func() {
 		if err := cmd.Wait(); err != nil {
@@ -456,4 +484,137 @@ func (t *Transcoder) ClearCaches() {
 	t.mu.Unlock()
 	_ = os.RemoveAll(t.thumbDir)
 	_ = os.MkdirAll(t.thumbDir, 0755)
+}
+
+func isCompletedHLS(m3u8Path string) bool {
+	b, err := os.ReadFile(m3u8Path)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(b), "#EXT-X-ENDLIST")
+}
+
+// PrewarmAllAudioCache 后台低优先级单线程将所有音乐曲目预转码为 320K HLS 永久缓存
+func (t *Transcoder) PrewarmAllAudioCache(s *Store, qualityKey string) {
+	if t.ffmpegPath == "" || s == nil {
+		return
+	}
+	cfg := s.GetSettings()
+	if cfg.DisableAudioCache || cfg.DisableAudioPrewarm {
+		return
+	}
+	if qualityKey == "" {
+		qualityKey = cfg.PrewarmAudioQuality
+	}
+	if qualityKey == "" {
+		qualityKey = "audio_320"
+	}
+	prof := FindQualityProfile(qualityKey)
+	if prof == nil || !prof.AudioOnly {
+		return
+	}
+
+	t.prewarmMu.Lock()
+	if t.prewarmRunning {
+		t.prewarmMu.Unlock()
+		return
+	}
+	t.prewarmRunning = true
+	t.prewarmMu.Unlock()
+	defer func() {
+		t.prewarmMu.Lock()
+		t.prewarmRunning = false
+		t.prewarmMu.Unlock()
+	}()
+
+	var audioItems []*MediaItem
+	s.mu.RLock()
+	for _, it := range s.data.Items {
+		if it != nil && it.Type == "Audio" && it.FilePath != "" {
+			audioItems = append(audioItems, it)
+		}
+	}
+	s.mu.RUnlock()
+
+	if len(audioItems) == 0 {
+		return
+	}
+	kbps := prof.Bitrate / 1000
+	if kbps <= 0 {
+		kbps = 320
+	}
+	cachedCount := 0
+	newCount := 0
+	for _, it := range audioItems {
+		if s.GetSettings().DisableAudioPrewarm {
+			break
+		}
+		sessDir := filepath.Join(t.audioCacheDir, it.Guid+"_"+qualityKey)
+		m3u8Path := filepath.Join(sessDir, "index.m3u8")
+		if isCompletedHLS(m3u8Path) {
+			cachedCount++
+			continue
+		}
+		tmpDir := sessDir + ".pre.tmp"
+		_ = os.RemoveAll(tmpDir)
+		if err := os.MkdirAll(tmpDir, 0755); err != nil {
+			continue
+		}
+		tmpM3u8 := filepath.Join(tmpDir, "index.m3u8")
+		segPattern := filepath.Join(tmpDir, "seg_%05d.ts")
+		cmd := exec.Command(t.ffmpegPath,
+			"-y", "-v", "quiet", "-i", it.FilePath,
+			"-vn", "-c:a", "aac", "-b:a", fmt.Sprintf("%dk", kbps), "-ac", "2",
+			"-f", "hls", "-hls_time", "2", "-hls_list_size", "0",
+			"-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
+			"-hls_segment_filename", segPattern, tmpM3u8,
+		)
+		if err := cmd.Run(); err == nil && isCompletedHLS(tmpM3u8) {
+			_ = os.RemoveAll(sessDir)
+			if os.Rename(tmpDir, sessDir) == nil {
+				newCount++
+				cachedCount++
+				if newCount%10 == 1 || newCount <= 3 {
+					log.Printf("[AudioPrewarm] 已预缓存 %d/%d 首 (%s): %s", cachedCount, len(audioItems), qualityKey, it.Title)
+				}
+			} else {
+				_ = os.RemoveAll(tmpDir)
+			}
+		} else {
+			_ = os.RemoveAll(tmpDir)
+		}
+		// 稍微让出 CPU，避免后台预缓存影响实时看片
+		time.Sleep(300 * time.Millisecond)
+	}
+	if newCount > 0 {
+		log.Printf("[AudioPrewarm] 本轮预缓存完成：新增 %d 首，总计已缓存 %d/%d 首 (%s)", newCount, cachedCount, len(audioItems), qualityKey)
+	}
+}
+
+func (t *Transcoder) GetAudioCacheStats(s *Store, qualityKey string) (totalAudio int, cachedAudio int, bytes int64, running bool) {
+	if qualityKey == "" {
+		qualityKey = "audio_320"
+	}
+	t.prewarmMu.Lock()
+	running = t.prewarmRunning
+	t.prewarmMu.Unlock()
+	s.mu.RLock()
+	for _, it := range s.data.Items {
+		if it != nil && it.Type == "Audio" {
+			totalAudio++
+			if isCompletedHLS(filepath.Join(t.audioCacheDir, it.Guid+"_"+qualityKey, "index.m3u8")) {
+				cachedAudio++
+			}
+		}
+	}
+	s.mu.RUnlock()
+	_ = filepath.WalkDir(t.audioCacheDir, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if info, e := d.Info(); e == nil {
+				bytes += info.Size()
+			}
+		}
+		return nil
+	})
+	return
 }

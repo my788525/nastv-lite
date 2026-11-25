@@ -26,7 +26,10 @@ type ServerSettings struct {
 	TranscodeCodec   string `json:"transcode_codec"`    // h264, hevc
 	HLSContainer     string `json:"hls_container"`      // ts, fmp4
 	HLSSegmentSec    int    `json:"hls_segment_sec"`    // 2, 4, 6
-	DisableGzip      bool   `json:"disable_gzip"`       // false=enable HTTP gzip for JSON/M3U8/subtitles
+	DisableGzip         bool   `json:"disable_gzip"`          // false=enable HTTP gzip for JSON/M3U8/subtitles
+	DisableAudioCache   bool   `json:"disable_audio_cache"`   // false=persist audio HLS cache on disk
+	DisableAudioPrewarm bool   `json:"disable_audio_prewarm"` // false=auto pre-transcode all songs to 320K
+	PrewarmAudioQuality string `json:"prewarm_audio_quality"` // default audio_320
 	AutoScanHours    int    `json:"auto_scan_hours"`    // 0=off, 1, 6, 24
 	EnableThumbnails bool   `json:"enable_thumbnails"`  // auto ffmpeg frame thumbs
 	EnableScraper    bool   `json:"enable_scraper"`     // auto public metadata scraper for movie_tv libs

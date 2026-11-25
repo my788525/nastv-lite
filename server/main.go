@@ -176,6 +176,7 @@ func main() {
 	mux.HandleFunc("/api/admin/libraries/scrape", app.handleAdminScrape)
 	mux.HandleFunc("/api/admin/users", app.handleAdminUsers)
 	mux.HandleFunc("/api/admin/settings", app.handleAdminSettings)
+	mux.HandleFunc("/api/admin/audio/prewarm", app.handleAdminAudioPrewarm)
 	mux.HandleFunc("/api/admin/cache/clear", app.handleAdminCacheClear)
 	mux.HandleFunc("/api/admin/logs", app.handleAdminLogs)
 	mux.HandleFunc("/api/admin/ddns", app.handleAdminDDNS)
@@ -231,6 +232,10 @@ func main() {
 	}
 
 	go app.prewarmUpdateMirror()
+	go func() {
+		time.Sleep(15 * time.Second)
+		app.transcoder.PrewarmAllAudioCache(app.store, "")
+	}()
 
 	if err := http.Serve(ln, corsMiddleware(app.gzipMiddleware(mux))); err != nil {
 		log.Fatalf("Server error: %v", err)
