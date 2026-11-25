@@ -325,9 +325,15 @@
       </div>
 
       <div class="card">
-        <div class="card-title">2. 搜索歌曲或直接粘贴音频直链导入</div>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <input id="mdlSearchInput" placeholder="输入歌名 / 歌手关键词搜索..." onkeydown="if(event.key==='Enter')searchMusicDl()">
+        <div class="card-title">2. 搜索完整版歌曲或直接粘贴音频直链导入</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <select id="mdlSearchSource" style="width:190px;flex:none">
+            <option value="all">🌐 全部平台 (Listen1聚合)</option>
+            <option value="bilibili">📺 B站 (Bilibili完整版)</option>
+            <option value="kuwo">🎵 酷我音乐 (Kuwo)</option>
+            <option value="netease">☁ 网易云公开源</option>
+          </select>
+          <input id="mdlSearchInput" style="flex:1;min-width:200px" placeholder="输入歌名 / 歌手关键词搜索..." onkeydown="if(event.key==='Enter')searchMusicDl()">
           <button onclick="searchMusicDl()">🔍 搜索歌曲</button>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:8px;margin-bottom:14px;padding-top:10px;border-top:1px solid var(--border)">
@@ -342,8 +348,8 @@
           <button class="sec" onclick="stopMusicPreview()">✕ 关闭试听</button>
         </div>
         <table>
-          <thead><tr><th>封面</th><th>歌名</th><th>歌手</th><th>专辑</th><th>来源</th><th>操作</th></tr></thead>
-          <tbody id="mdlSearchTbody"><tr><td colspan="6" style="color:var(--muted)">请输入关键词搜索或使用直链导入</td></tr></tbody>
+          <thead><tr><th>封面</th><th>歌名</th><th>歌手</th><th>专辑</th><th>时长</th><th>来源</th><th>操作</th></tr></thead>
+          <tbody id="mdlSearchTbody"><tr><td colspan="7" style="color:var(--muted)">请输入关键词搜索或使用直链导入</td></tr></tbody>
         </table>
       </div>
 
@@ -1079,6 +1085,14 @@ function stopMusicPreview() {
   updatePreviewButtons();
 }
 
+function fmtMusicDur(sec) {
+  sec = Number(sec) || 0;
+  if (sec <= 0) return '--';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
 async function previewSearchMusic(idx) {
   const it = mdlSearchResults[idx];
   if (!it) return;
@@ -1092,7 +1106,7 @@ async function previewSearchMusic(idx) {
     audio.addEventListener('ended', updatePreviewButtons);
     audio.addEventListener('error', () => {
       updatePreviewButtons();
-      titleEl.textContent = '⚠ 试听加载失败（可能受音源防盗链或跨域限制）';
+      titleEl.textContent = '⚠ 该音源暂不可播放（可能受版权限制）';
     });
   }
   if (mdlPlayingIdx === idx && audio.src) {
@@ -1103,25 +1117,15 @@ async function previewSearchMusic(idx) {
     }
     return;
   }
-  const btn = document.getElementById('mdlPlayBtn_' + idx);
-  let url = it.audio_url || '';
-  if (!url && it.id) {
-    if (btn) btn.textContent = '⏳ 解析中';
-    try {
-      const r = await api('/api/admin/music/preview?id=' + encodeURIComponent(it.id));
-      url = r.data?.url || '';
-      if (url) it.audio_url = url;
-    } catch (e) {}
-  }
-  if (!url) {
-    updatePreviewButtons();
-    alert('该歌曲暂未提供试听直链');
-    return;
-  }
+  const streamUrl = '/api/admin/music/stream?id=' + encodeURIComponent(it.id || '') +
+    '&title=' + encodeURIComponent(it.title || '') +
+    '&artist=' + encodeURIComponent(it.artist || '') +
+    (it.audio_url ? '&url=' + encodeURIComponent(it.audio_url) : '') +
+    '&token=' + encodeURIComponent(token || '');
   mdlPlayingIdx = idx;
   bar.style.display = 'flex';
   titleEl.textContent = '🎵 ' + (it.title || '') + (it.artist ? ' - ' + it.artist : '');
-  audio.src = url;
+  audio.src = streamUrl;
   audio.play().catch(() => {});
   updatePreviewButtons();
 }
@@ -1129,14 +1133,15 @@ async function previewSearchMusic(idx) {
 async function searchMusicDl() {
   const q = document.getElementById('mdlSearchInput').value.trim();
   if (!q) return;
+  const src = document.getElementById('mdlSearchSource')?.value || 'all';
   const tb = document.getElementById('mdlSearchTbody');
-  tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">正在搜索...</td></tr>';
+  tb.innerHTML = '<tr><td colspan="7" style="color:var(--muted)">正在聚合搜索各平台完整版音源...</td></tr>';
   mdlPlayingIdx = -1;
   try {
-    const r = await api('/api/admin/music/search?q=' + encodeURIComponent(q));
+    const r = await api('/api/admin/music/search?q=' + encodeURIComponent(q) + '&source=' + encodeURIComponent(src));
     mdlSearchResults = r.data?.results || [];
     if (!mdlSearchResults.length) {
-      tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">未找到结果</td></tr>';
+      tb.innerHTML = '<tr><td colspan="7" style="color:var(--muted)">未找到结果</td></tr>';
       return;
     }
     tb.innerHTML = mdlSearchResults.map((it, idx) => `
@@ -1145,6 +1150,7 @@ async function searchMusicDl() {
         <td><b>${esc(it.title)}</b></td>
         <td>${esc(it.artist || '--')}</td>
         <td>${esc(it.album || '--')}</td>
+        <td style="color:var(--muted)">${fmtMusicDur(it.duration)}</td>
         <td><span class="badge">${esc(it.source || 'api')}</span></td>
         <td>
           <div style="display:flex;gap:6px;white-space:nowrap">
@@ -1155,7 +1161,7 @@ async function searchMusicDl() {
       </tr>
     `).join('');
   } catch (e) {
-    tb.innerHTML = '<tr><td colspan="6" style="color:#f87171">搜索失败: ' + esc(e.message || e) + '</td></tr>';
+    tb.innerHTML = '<tr><td colspan="7" style="color:#f87171">搜索失败: ' + esc(e.message || e) + '</td></tr>';
   }
 }
 

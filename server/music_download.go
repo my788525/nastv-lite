@@ -3,16 +3,21 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+const musicBrowserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 type MusicSearchItem struct {
 	ID       string `json:"id"`
@@ -200,13 +205,349 @@ func resolveCustomAudioURL(apiBase, songID string) string {
 	return ""
 }
 
-func searchITunesTracks(query string) []MusicSearchItem {
+var (
+	biliCookieMu     sync.Mutex
+	biliCookieCache  string
+	biliCookieExpiry time.Time
+	reHTMLTag        = regexp.MustCompile(`<[^>]+>`)
+)
+
+func getBilibiliCookie(forceRefresh bool) string {
+	biliCookieMu.Lock()
+	defer biliCookieMu.Unlock()
+	if !forceRefresh && biliCookieCache != "" && time.Now().Before(biliCookieExpiry) {
+		return biliCookieCache
+	}
+	client := &http.Client{Timeout: 8 * time.Second}
+	req, _ := http.NewRequest("GET", "https://www.bilibili.com/", nil)
+	req.Header.Set("User-Agent", musicBrowserUA)
+	resp, err := client.Do(req)
+	if err != nil {
+		return biliCookieCache
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 256*1024))
+	var parts []string
+	for _, c := range resp.Cookies() {
+		if c.Name != "" && c.Value != "" {
+			parts = append(parts, c.Name+"="+c.Value)
+		}
+	}
+	if len(parts) > 0 {
+		biliCookieCache = strings.Join(parts, "; ")
+		biliCookieExpiry = time.Now().Add(30 * time.Minute)
+	}
+	return biliCookieCache
+}
+
+func biliGetJSON(targetURL string) ([]byte, int, error) {
+	cookie := getBilibiliCookie(false)
+	for attempt := 0; attempt < 2; attempt++ {
+		client := &http.Client{Timeout: 10 * time.Second}
+		req, _ := http.NewRequest("GET", targetURL, nil)
+		req.Header.Set("User-Agent", musicBrowserUA)
+		req.Header.Set("Referer", "https://www.bilibili.com/")
+		req.Header.Set("Origin", "https://www.bilibili.com")
+		if cookie != "" {
+			req.Header.Set("Cookie", cookie)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, 0, err
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+		resp.Body.Close()
+		if resp.StatusCode == 412 && attempt == 0 {
+			cookie = getBilibiliCookie(true)
+			continue
+		}
+		return body, resp.StatusCode, readErr
+	}
+	return nil, 0, fmt.Errorf("bilibili request failed")
+}
+
+func parseColonDuration(s string) int64 {
+	parts := strings.Split(strings.TrimSpace(s), ":")
+	var sec int64
+	for _, p := range parts {
+		v, err := strconv.ParseInt(strings.TrimSpace(p), 10, 64)
+		if err != nil {
+			return 0
+		}
+		sec = sec*60 + v
+	}
+	return sec
+}
+
+func searchBilibiliTracks(query string) []MusicSearchItem {
+	if query == "" {
+		return nil
+	}
+	u := "https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=" + url.QueryEscape(query) + "&page=1&pagesize=12"
+	raw, code, err := biliGetJSON(u)
+	if err != nil || code != 200 {
+		return nil
+	}
+	var parsed struct {
+		Code int `json:"code"`
+		Data struct {
+			Result []struct {
+				BVID     string `json:"bvid"`
+				Title    string `json:"title"`
+				Author   string `json:"author"`
+				Pic      string `json:"pic"`
+				Duration string `json:"duration"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(raw, &parsed) != nil || parsed.Code != 0 {
+		return nil
+	}
+	var out []MusicSearchItem
+	for _, r := range parsed.Data.Result {
+		if r.BVID == "" || r.Title == "" {
+			continue
+		}
+		title := strings.TrimSpace(html.UnescapeString(reHTMLTag.ReplaceAllString(r.Title, "")))
+		cov := strings.TrimSpace(r.Pic)
+		if strings.HasPrefix(cov, "//") {
+			cov = "https:" + cov
+		}
+		out = append(out, MusicSearchItem{
+			ID:       "bili_" + r.BVID,
+			Title:    title,
+			Artist:   strings.TrimSpace(r.Author),
+			Album:    "Bilibili",
+			Duration: parseColonDuration(r.Duration),
+			CoverURL: cov,
+			Source:   "bilibili",
+		})
+	}
+	return out
+}
+
+func resolveBilibiliAudioURL(bvid string) string {
+	bvid = strings.TrimSpace(strings.TrimPrefix(bvid, "bili_"))
+	if bvid == "" {
+		return ""
+	}
+	rawView, code, err := biliGetJSON("https://api.bilibili.com/x/web-interface/view?bvid=" + url.QueryEscape(bvid))
+	if err != nil || code != 200 {
+		return ""
+	}
+	var view struct {
+		Code int `json:"code"`
+		Data struct {
+			Pages []struct {
+				CID int64 `json:"cid"`
+			} `json:"pages"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(rawView, &view) != nil || len(view.Data.Pages) == 0 {
+		return ""
+	}
+	cid := view.Data.Pages[0].CID
+	playURL := fmt.Sprintf("https://api.bilibili.com/x/player/playurl?bvid=%s&cid=%d&fnval=16&fnver=0&fourk=1", url.QueryEscape(bvid), cid)
+	rawPlay, code, err := biliGetJSON(playURL)
+	if err != nil || code != 200 {
+		return ""
+	}
+	var play struct {
+		Data struct {
+			Dash struct {
+				Audio []struct {
+					Bandwidth int64    `json:"bandwidth"`
+					BaseURL   string   `json:"baseUrl"`
+					BackupURL []string `json:"backupUrl"`
+				} `json:"audio"`
+			} `json:"dash"`
+			Durl []struct {
+				URL string `json:"url"`
+			} `json:"durl"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(rawPlay, &play) != nil {
+		return ""
+	}
+	bestBW := int64(-1)
+	bestURL := ""
+	for _, a := range play.Data.Dash.Audio {
+		u := a.BaseURL
+		if u == "" && len(a.BackupURL) > 0 {
+			u = a.BackupURL[0]
+		}
+		if u != "" && a.Bandwidth > bestBW {
+			bestBW = a.Bandwidth
+			bestURL = u
+		}
+	}
+	if bestURL != "" {
+		return bestURL
+	}
+	if len(play.Data.Durl) > 0 {
+		return play.Data.Durl[0].URL
+	}
+	return ""
+}
+
+// jsObjToJSON converts Kuwo's single-quoted JS object string into valid JSON.
+func jsObjToJSON(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 64)
+	inSingle := false
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if inSingle {
+			if escaped {
+				if ch == '\'' {
+					b.WriteByte('\'')
+				} else {
+					b.WriteByte('\\')
+					b.WriteByte(ch)
+				}
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '\'' {
+				inSingle = false
+				b.WriteByte('"')
+				continue
+			}
+			if ch == '"' {
+				b.WriteString(`\"`)
+				continue
+			}
+			b.WriteByte(ch)
+		} else {
+			if ch == '\'' {
+				inSingle = true
+				b.WriteByte('"')
+			} else {
+				b.WriteByte(ch)
+			}
+		}
+	}
+	return b.String()
+}
+
+func cleanKuwoText(s string) string {
+	s = strings.ReplaceAll(s, "&nbsp;", " ")
+	return strings.TrimSpace(html.UnescapeString(s))
+}
+
+func searchKuwoTracks(query string) []MusicSearchItem {
 	if query == "" {
 		return nil
 	}
 	client := &http.Client{Timeout: 8 * time.Second}
-	u := "https://itunes.apple.com/search?media=music&entity=song&limit=15&term=" + url.QueryEscape(query)
-	resp, err := client.Get(u)
+	u := "http://search.kuwo.cn/r.s?all=" + url.QueryEscape(query) + "&ft=music&itemset=web_2013&client=kt&pn=0&rn=12&rformat=json&encoding=utf8"
+	req, _ := http.NewRequest("GET", u, nil)
+	req.Header.Set("User-Agent", musicBrowserUA)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+	if err != nil {
+		return nil
+	}
+	jsonBytes := []byte(jsObjToJSON(string(raw)))
+	var parsed struct {
+		Abslist []struct {
+			MUSICRID       string `json:"MUSICRID"`
+			SONGNAME       string `json:"SONGNAME"`
+			NAME           string `json:"NAME"`
+			ARTIST         string `json:"ARTIST"`
+			ALBUM          string `json:"ALBUM"`
+			DURATION       string `json:"DURATION"`
+			WebAlbumpic    string `json:"web_albumpic_short"`
+			HtsMvpic       string `json:"hts_MVPIC"`
+			PicPath        string `json:"PICPATH"`
+		} `json:"abslist"`
+	}
+	if json.Unmarshal(jsonBytes, &parsed) != nil {
+		return nil
+	}
+	var out []MusicSearchItem
+	for _, r := range parsed.Abslist {
+		rid := strings.TrimPrefix(strings.TrimSpace(r.MUSICRID), "MUSIC_")
+		title := cleanKuwoText(r.SONGNAME)
+		if title == "" {
+			title = cleanKuwoText(r.NAME)
+		}
+		if rid == "" || title == "" {
+			continue
+		}
+		dur, _ := strconv.ParseInt(strings.TrimSpace(r.DURATION), 10, 64)
+		cov := ""
+		if r.WebAlbumpic != "" {
+			p := strings.Replace(r.WebAlbumpic, "120/", "500/", 1)
+			cov = "https://img4.kuwo.cn/star/albumcover/" + p
+		} else if r.HtsMvpic != "" {
+			cov = r.HtsMvpic
+		}
+		out = append(out, MusicSearchItem{
+			ID:       "kuwo_" + rid,
+			Title:    title,
+			Artist:   cleanKuwoText(r.ARTIST),
+			Album:    cleanKuwoText(r.ALBUM),
+			Duration: dur,
+			CoverURL: cov,
+			Source:   "kuwo",
+		})
+	}
+	return out
+}
+
+func resolveKuwoAudioURL(rid string) string {
+	rid = strings.TrimPrefix(strings.TrimSpace(rid), "kuwo_")
+	rid = strings.TrimPrefix(rid, "MUSIC_")
+	if rid == "" {
+		return ""
+	}
+	client := &http.Client{Timeout: 8 * time.Second}
+	u := "http://antiserver.kuwo.cn/anti.s?type=convert_url&rid=MUSIC_" + url.QueryEscape(rid) + "&format=mp3&response=url"
+	req, _ := http.NewRequest("GET", u, nil)
+	req.Header.Set("User-Agent", musicBrowserUA)
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return ""
+	}
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	res := strings.TrimSpace(string(b))
+	if strings.HasPrefix(res, "http://") || strings.HasPrefix(res, "https://") {
+		return res
+	}
+	return ""
+}
+
+func searchNeteasePublicTracks(query string) []MusicSearchItem {
+	if query == "" {
+		return nil
+	}
+	client := &http.Client{Timeout: 8 * time.Second}
+	form := url.Values{}
+	form.Set("s", query)
+	form.Set("type", "1")
+	form.Set("limit", "10")
+	req, _ := http.NewRequest("POST", "https://music.163.com/api/search/get/web", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", musicBrowserUA)
+	req.Header.Set("Referer", "https://music.163.com/")
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil
 	}
@@ -215,37 +556,105 @@ func searchITunesTracks(query string) []MusicSearchItem {
 		return nil
 	}
 	var parsed struct {
-		Results []struct {
-			TrackID        int64  `json:"trackId"`
-			TrackName      string `json:"trackName"`
-			ArtistName     string `json:"artistName"`
-			CollectionName string `json:"collectionName"`
-			TrackTimeMillis int64 `json:"trackTimeMillis"`
-			ArtworkUrl100  string `json:"artworkUrl100"`
-			PreviewUrl     string `json:"previewUrl"`
-		} `json:"results"`
+		Result struct {
+			Songs []struct {
+				ID      int64  `json:"id"`
+				Name    string `json:"name"`
+				Dur     int64  `json:"duration"`
+				Artists []struct {
+					Name string `json:"name"`
+				} `json:"artists"`
+				Album struct {
+					Name   string `json:"name"`
+					PicURL string `json:"picUrl"`
+				} `json:"album"`
+			} `json:"songs"`
+		} `json:"result"`
 	}
 	if json.NewDecoder(resp.Body).Decode(&parsed) != nil {
 		return nil
 	}
 	var out []MusicSearchItem
-	for _, r := range parsed.Results {
-		if r.TrackName == "" {
+	for _, s := range parsed.Result.Songs {
+		if s.ID == 0 || s.Name == "" {
 			continue
 		}
-		cov := strings.ReplaceAll(r.ArtworkUrl100, "100x100bb", "600x600bb")
+		artist := ""
+		if len(s.Artists) > 0 {
+			artist = s.Artists[0].Name
+		}
 		out = append(out, MusicSearchItem{
-			ID:       fmt.Sprintf("itunes_%d", r.TrackID),
-			Title:    r.TrackName,
-			Artist:   r.ArtistName,
-			Album:    r.CollectionName,
-			Duration: r.TrackTimeMillis / 1000,
-			CoverURL: cov,
-			AudioURL: r.PreviewUrl,
-			Source:   "itunes_preview",
+			ID:       fmt.Sprintf("netease_%d", s.ID),
+			Title:    s.Name,
+			Artist:   artist,
+			Album:    s.Album.Name,
+			Duration: s.Dur / 1000,
+			CoverURL: s.Album.PicURL,
+			Source:   "netease",
 		})
 	}
 	return out
+}
+
+func resolveNeteasePublicURL(nid string) string {
+	nid = strings.TrimPrefix(strings.TrimSpace(nid), "netease_")
+	if nid == "" {
+		return ""
+	}
+	client := &http.Client{
+		Timeout: 8 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	u := "https://music.163.com/song/media/outer/url?id=" + url.QueryEscape(nid) + ".mp3"
+	req, _ := http.NewRequest("GET", u, nil)
+	req.Header.Set("User-Agent", musicBrowserUA)
+	req.Header.Set("Referer", "https://music.163.com/")
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	if (resp.StatusCode == 301 || resp.StatusCode == 302) && loc != "" && !strings.Contains(loc, "/404") {
+		return loc
+	}
+	return ""
+}
+
+func resolveAudioURLByID(musicSourceAPI, songID, title, artist string) (string, string) {
+	if strings.HasPrefix(songID, "bili_") {
+		return resolveBilibiliAudioURL(songID), "https://www.bilibili.com/"
+	}
+	if strings.HasPrefix(songID, "kuwo_") {
+		return resolveKuwoAudioURL(songID), ""
+	}
+	if strings.HasPrefix(songID, "netease_") {
+		if u := resolveNeteasePublicURL(songID); u != "" {
+			return u, "https://music.163.com/"
+		}
+	} else if musicSourceAPI != "" && songID != "" {
+		if u := resolveCustomAudioURL(musicSourceAPI, songID); u != "" {
+			return u, ""
+		}
+	}
+	// Listen1-style cross-platform fallback: try Kuwo then Bilibili by title + artist
+	if q := strings.TrimSpace(title + " " + artist); q != "" {
+		for _, k := range searchKuwoTracks(q) {
+			if u := resolveKuwoAudioURL(k.ID); u != "" {
+				return u, ""
+			}
+			break
+		}
+		for _, b := range searchBilibiliTracks(q) {
+			if u := resolveBilibiliAudioURL(b.ID); u != "" {
+				return u, "https://www.bilibili.com/"
+			}
+			break
+		}
+	}
+	return "", ""
 }
 
 func (app *App) handleAdminMusicSearch(w http.ResponseWriter, r *http.Request) {
@@ -257,13 +666,60 @@ func (app *App) handleAdminMusicSearch(w http.ResponseWriter, r *http.Request) {
 		errResp(w, 400, "请输入搜索关键词")
 		return
 	}
+	source := strings.TrimSpace(r.URL.Query().Get("source"))
+	if source == "" {
+		source = "all"
+	}
 	cfg := app.store.GetSettings()
 	var results []MusicSearchItem
-	if cfg.MusicSourceAPI != "" {
+	if cfg.MusicSourceAPI != "" && (source == "all" || source == "custom") {
 		results = searchCustomMusicAPI(cfg.MusicSourceAPI, q)
 	}
 	if len(results) == 0 {
-		results = searchITunesTracks(q)
+		var wg sync.WaitGroup
+		var kuwoRes, biliRes, neRes []MusicSearchItem
+		if source == "all" || source == "kuwo" {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				kuwoRes = searchKuwoTracks(q)
+			}()
+		}
+		if source == "all" || source == "bilibili" {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				biliRes = searchBilibiliTracks(q)
+			}()
+		}
+		if source == "all" || source == "netease" {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				neRes = searchNeteasePublicTracks(q)
+			}()
+		}
+		wg.Wait()
+
+		// Interleave results across platforms (Listen1-style aggregation)
+		maxLen := len(kuwoRes)
+		if len(biliRes) > maxLen {
+			maxLen = len(biliRes)
+		}
+		if len(neRes) > maxLen {
+			maxLen = len(neRes)
+		}
+		for i := 0; i < maxLen; i++ {
+			if i < len(kuwoRes) {
+				results = append(results, kuwoRes[i])
+			}
+			if i < len(neRes) {
+				results = append(results, neRes[i])
+			}
+			if i < len(biliRes) {
+				results = append(results, biliRes[i])
+			}
+		}
 	}
 	if results == nil {
 		results = []MusicSearchItem{}
@@ -279,17 +735,74 @@ func (app *App) handleAdminMusicPreview(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
-	if id == "" {
+	title := strings.TrimSpace(r.URL.Query().Get("title"))
+	artist := strings.TrimSpace(r.URL.Query().Get("artist"))
+	if id == "" && title == "" {
 		errResp(w, 400, "缺少歌曲 ID")
 		return
 	}
 	cfg := app.store.GetSettings()
-	audioURL := resolveCustomAudioURL(cfg.MusicSourceAPI, id)
+	audioURL, _ := resolveAudioURLByID(cfg.MusicSourceAPI, id, title, artist)
 	if audioURL == "" {
-		errResp(w, 404, "未获取到试听链接")
+		errResp(w, 404, "未获取到完整版试听链接")
 		return
 	}
 	okResp(w, map[string]string{"url": audioURL})
+}
+
+func (app *App) handleAdminMusicStream(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Authorization") == "" {
+		if tok := strings.TrimSpace(r.URL.Query().Get("token")); tok != "" {
+			r.Header.Set("Authorization", "Bearer "+tok)
+		}
+	}
+	if app.requireAdmin(w, r) == nil {
+		return
+	}
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	title := strings.TrimSpace(r.URL.Query().Get("title"))
+	artist := strings.TrimSpace(r.URL.Query().Get("artist"))
+	rawURL := strings.TrimSpace(r.URL.Query().Get("url"))
+	referer := ""
+	if rawURL == "" {
+		rawURL, referer = resolveAudioURLByID(app.store.GetSettings().MusicSourceAPI, id, title, artist)
+	}
+	if rawURL == "" {
+		http.Error(w, "未获取到可播放的完整版音频", http.StatusNotFound)
+		return
+	}
+	if referer == "" && (strings.Contains(rawURL, "bilivideo") || strings.Contains(rawURL, "bilibili")) {
+		referer = "https://www.bilibili.com/"
+	}
+	client := &http.Client{Timeout: 60 * time.Second}
+	req, err := http.NewRequest("GET", rawURL, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	req.Header.Set("User-Agent", musicBrowserUA)
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+	if rng := r.Header.Get("Range"); rng != "" {
+		req.Header.Set("Range", rng)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	for _, h := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"} {
+		if v := resp.Header.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "audio/mp4")
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 }
 
 func (app *App) handleAdminMusicTasks(w http.ResponseWriter, r *http.Request) {
@@ -373,18 +886,30 @@ func (app *App) handleAdminMusicDownload(w http.ResponseWriter, r *http.Request)
 
 func (app *App) runMusicDownloadTask(taskID, songID, title, artist, album, audioURL, coverURL, lyrics, targetDir, libID string) {
 	cfg := app.store.GetSettings()
-	if audioURL == "" && songID != "" && cfg.MusicSourceAPI != "" {
-		updateMusicTask(taskID, "downloading", "正在向音源接口解析下载地址...", "")
-		audioURL = resolveCustomAudioURL(cfg.MusicSourceAPI, songID)
+	referer := ""
+	if audioURL == "" {
+		updateMusicTask(taskID, "downloading", "正在解析完整版音频下载地址（支持跨平台自动匹配）...", "")
+		audioURL, referer = resolveAudioURLByID(cfg.MusicSourceAPI, songID, title, artist)
 	}
 	if audioURL == "" {
-		updateMusicTask(taskID, "failed", "未能获取到有效音频下载链接（请粘贴直链或配置自定义音源接口）", "")
+		updateMusicTask(taskID, "failed", "未能获取到完整版音频下载链接（可能受版权/VIP限制，请换一个来源或使用直链导入）", "")
 		return
 	}
 
-	updateMusicTask(taskID, "downloading", "正在下载音频文件到 NAS...", "")
+	updateMusicTask(taskID, "downloading", "正在下载完整版音频文件到 NAS...", "")
 	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Get(audioURL)
+	req, err := http.NewRequest("GET", audioURL, nil)
+	if err != nil {
+		updateMusicTask(taskID, "failed", "下载失败: "+err.Error(), "")
+		return
+	}
+	req.Header.Set("User-Agent", musicBrowserUA)
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	} else if strings.Contains(audioURL, "bilivideo") || strings.Contains(audioURL, "bilibili") {
+		req.Header.Set("Referer", "https://www.bilibili.com/")
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		updateMusicTask(taskID, "failed", "下载失败: "+err.Error(), "")
 		return
