@@ -953,6 +953,9 @@ async function delDDNS(id) {
 }
 
 // ========== 搜歌下载与自动转码入库 ==========
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 let mdlSearchResults = [];
 async function initMusicDlTab() {
   const [libRes, setRes] = await Promise.all([api('/api/admin/libraries'), api('/api/admin/settings')]);
@@ -988,22 +991,26 @@ async function searchMusicDl() {
   if (!q) return;
   const tb = document.getElementById('mdlSearchTbody');
   tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">正在搜索...</td></tr>';
-  const r = await api('/api/admin/music/search?q=' + encodeURIComponent(q));
-  mdlSearchResults = r.data?.results || [];
-  if (!mdlSearchResults.length) {
-    tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">未找到结果</td></tr>';
-    return;
+  try {
+    const r = await api('/api/admin/music/search?q=' + encodeURIComponent(q));
+    mdlSearchResults = r.data?.results || [];
+    if (!mdlSearchResults.length) {
+      tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">未找到结果</td></tr>';
+      return;
+    }
+    tb.innerHTML = mdlSearchResults.map((it, idx) => `
+      <tr>
+        <td>${it.cover_url ? `<img src="${esc(it.cover_url)}" style="width:36px;height:36px;border-radius:6px;object-fit:cover">` : '🎵'}</td>
+        <td><b>${esc(it.title)}</b></td>
+        <td>${esc(it.artist || '--')}</td>
+        <td>${esc(it.album || '--')}</td>
+        <td><span class="badge">${esc(it.source || 'api')}</span></td>
+        <td><button onclick="downloadSearchMusic(${idx})">⬇ 下载入库</button></td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    tb.innerHTML = '<tr><td colspan="6" style="color:#f87171">搜索失败: ' + esc(e.message || e) + '</td></tr>';
   }
-  tb.innerHTML = mdlSearchResults.map((it, idx) => `
-    <tr>
-      <td>${it.cover_url ? `<img src="${it.cover_url}" style="width:36px;height:36px;border-radius:6px;object-fit:cover">` : '🎵'}</td>
-      <td><b>${esc(it.title)}</b></td>
-      <td>${esc(it.artist || '--')}</td>
-      <td>${esc(it.album || '--')}</td>
-      <td><span class="badge">${esc(it.source || 'api')}</span></td>
-      <td><button onclick="downloadSearchMusic(${idx})">⬇ 下载入库</button></td>
-    </tr>
-  `).join('');
 }
 
 async function downloadSearchMusic(idx) {
