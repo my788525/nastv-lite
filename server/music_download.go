@@ -286,7 +286,8 @@ func (app *App) handleAdminMusicTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) handleAdminMusicDownload(w http.ResponseWriter, r *http.Request) {
-	if app.requireAdmin(w, r) == nil {
+	u := app.requireAdmin(w, r)
+	if u == nil {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -317,7 +318,7 @@ func (app *App) handleAdminMusicDownload(w http.ResponseWriter, r *http.Request)
 	}
 	// Verify targetDir belongs to a configured library
 	allowed := false
-	for _, lib := range app.store.GetLibraries() {
+	for _, lib := range app.store.GetUserLibraries(u) {
 		for _, p := range lib.Paths {
 			if isSubPath(p, req.TargetDir) {
 				allowed = true
@@ -427,7 +428,7 @@ func (app *App) runMusicDownloadTask(taskID, songID, title, artist, album, audio
 
 	// 触发媒体库扫描入库并补齐元数据 + 320K HLS 预转码
 	if libID != "" {
-		_, _ = ScanLibrary(app.store, libID, app.transcoder)
+		_, _ = ScanLibrary(app.store, libID)
 	}
 	// 找到刚入库的 MediaItem
 	var targetItem *MediaItem
