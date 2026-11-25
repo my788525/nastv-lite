@@ -30,6 +30,7 @@ type ServerSettings struct {
 	DisableAudioCache   bool   `json:"disable_audio_cache"`   // false=persist audio HLS cache on disk
 	DisableAudioPrewarm bool   `json:"disable_audio_prewarm"` // false=auto pre-transcode all songs to 320K
 	PrewarmAudioQuality string `json:"prewarm_audio_quality"` // default audio_320
+	MusicSourceAPI      string `json:"music_source_api"`      // optional external music API (e.g. self-hosted NeteaseCloudMusicApi / Listen1 gateway)
 	AutoScanHours    int    `json:"auto_scan_hours"`    // 0=off, 1, 6, 24
 	EnableThumbnails bool   `json:"enable_thumbnails"`  // auto ffmpeg frame thumbs
 	EnableScraper    bool   `json:"enable_scraper"`     // auto public metadata scraper for movie_tv libs

@@ -92,6 +92,7 @@
     </div>
     <div class="nav-item active" data-tab="dash" onclick="switchTab('dash')">📊 系统概览</div>
     <div class="nav-item" data-tab="libs" onclick="switchTab('libs')">📚 媒体库管理</div>
+    <div class="nav-item" data-tab="musicdl" onclick="switchTab('musicdl')">🎵 搜歌下载</div>
     <div class="nav-item" data-tab="users" onclick="switchTab('users')">👥 用户与权限</div>
     <div class="nav-item" data-tab="ddns" onclick="switchTab('ddns')">🌐 DDNS 动态域名</div>
     <div class="nav-item" data-tab="settings" onclick="switchTab('settings')">⚙️ 服务端设置</div>
@@ -291,6 +292,57 @@
         </div>
       </div>
     </section>
+
+    <!-- Tab 6: Music Search & Download -->
+    <section id="tab-musicdl" class="tab-pane hidden">
+      <div class="page-header">
+        <div class="page-title">🎵 在线搜歌与自动转码入库</div>
+        <button class="sec" onclick="loadMusicTasks()">🔄 刷新任务</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">1. 目标保存目录与音源接口配置</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label>保存到的音乐媒体库目录</label>
+            <select id="mdlTargetDir"></select>
+          </div>
+          <div class="form-group">
+            <label>自定义兼容音源接口 URL（如自建 NeteaseCloudMusicApi / Listen1 网关，留空使用公开源）</label>
+            <div style="display:flex;gap:8px">
+              <input id="mdlSourceApi" placeholder="例如：http://127.0.0.1:3000">
+              <button class="sec" onclick="saveMusicSourceApi()">保存</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">2. 搜索歌曲或直接粘贴音频直链导入</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input id="mdlSearchInput" placeholder="输入歌名 / 歌手关键词搜索..." onkeydown="if(event.key==='Enter')searchMusicDl()">
+          <button onclick="searchMusicDl()">🔍 搜索歌曲</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:8px;margin-bottom:14px;padding-top:10px;border-top:1px solid var(--border)">
+          <input id="mdlDirectTitle" placeholder="直链导入：歌名">
+          <input id="mdlDirectArtist" placeholder="歌手（可选）">
+          <input id="mdlDirectUrl" placeholder="音频直链 URL（mp3 / flac / m4a）">
+          <button class="sec" onclick="downloadDirectMusic()">⬇ 直链入库</button>
+        </div>
+        <table>
+          <thead><tr><th>封面</th><th>歌名</th><th>歌手</th><th>专辑</th><th>来源</th><th>操作</th></tr></thead>
+          <tbody id="mdlSearchTbody"><tr><td colspan="6" style="color:var(--muted)">请输入关键词搜索或使用直链导入</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title">3. 下载与 320K HLS 转码入库任务队列</div>
+        <table>
+          <thead><tr><th>歌名</th><th>歌手</th><th>保存路径</th><th>状态</th><th>详情</th></tr></thead>
+          <tbody id="mdlTasksTbody"><tr><td colspan="5" style="color:var(--muted)">暂无任务</td></tr></tbody>
+        </table>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -442,6 +494,7 @@ function switchTab(tab) {
   if (tab === 'dash') loadLogs();
   if (tab === 'settings') loadSettings();
   if (tab === 'ddns') loadDDNS();
+  if (tab === 'musicdl') initMusicDlTab();
 }
 
 async function api(url, opts = {}) {
@@ -897,6 +950,111 @@ async function delDDNS(id) {
   if (!confirm('确认删除该 DDNS 任务？')) return;
   await api('/api/admin/ddns?id=' + encodeURIComponent(id), { method: 'DELETE' });
   loadDDNS();
+}
+
+// ========== 搜歌下载与自动转码入库 ==========
+let mdlSearchResults = [];
+async function initMusicDlTab() {
+  const [libRes, setRes] = await Promise.all([api('/api/admin/libraries'), api('/api/admin/settings')]);
+  const sel = document.getElementById('mdlTargetDir');
+  sel.innerHTML = '';
+  const libs = libRes.data || [];
+  libs.forEach(lib => {
+    (lib.paths || []).forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p + '|' + lib.id;
+      opt.textContent = lib.name + ' (' + p + ')';
+      if (lib.category === 'Music' || lib.category === 'Audio' || (lib.name || '').includes('音乐')) {
+        opt.selected = true;
+      }
+      sel.appendChild(opt);
+    });
+  });
+  if (setRes.data && setRes.data.music_source_api !== undefined) {
+    document.getElementById('mdlSourceApi').value = setRes.data.music_source_api || '';
+  }
+  loadMusicTasks();
+}
+
+async function saveMusicSourceApi() {
+  const cur = (await api('/api/admin/settings')).data || {};
+  cur.music_source_api = document.getElementById('mdlSourceApi').value.trim();
+  await api('/api/admin/settings', { method: 'POST', body: cur });
+  alert('音源接口地址已保存');
+}
+
+async function searchMusicDl() {
+  const q = document.getElementById('mdlSearchInput').value.trim();
+  if (!q) return;
+  const tb = document.getElementById('mdlSearchTbody');
+  tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">正在搜索...</td></tr>';
+  const r = await api('/api/admin/music/search?q=' + encodeURIComponent(q));
+  mdlSearchResults = r.data?.results || [];
+  if (!mdlSearchResults.length) {
+    tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">未找到结果</td></tr>';
+    return;
+  }
+  tb.innerHTML = mdlSearchResults.map((it, idx) => `
+    <tr>
+      <td>${it.cover_url ? `<img src="${it.cover_url}" style="width:36px;height:36px;border-radius:6px;object-fit:cover">` : '🎵'}</td>
+      <td><b>${esc(it.title)}</b></td>
+      <td>${esc(it.artist || '--')}</td>
+      <td>${esc(it.album || '--')}</td>
+      <td><span class="badge">${esc(it.source || 'api')}</span></td>
+      <td><button onclick="downloadSearchMusic(${idx})">⬇ 下载入库</button></td>
+    </tr>
+  `).join('');
+}
+
+async function downloadSearchMusic(idx) {
+  const it = mdlSearchResults[idx];
+  if (!it) return;
+  const val = document.getElementById('mdlTargetDir').value;
+  if (!val) { alert('请先在媒体库管理中添加至少一个音乐媒体库'); return; }
+  const [targetDir, libId] = val.split('|');
+  const r = await api('/api/admin/music/download', {
+    method: 'POST',
+    body: { id: it.id, title: it.title, artist: it.artist, album: it.album, audio_url: it.audio_url, cover_url: it.cover_url, target_dir: targetDir, lib_id: libId }
+  });
+  if (r.code !== 0) { alert(r.msg); return; }
+  loadMusicTasks();
+}
+
+async function downloadDirectMusic() {
+  const title = document.getElementById('mdlDirectTitle').value.trim();
+  const artist = document.getElementById('mdlDirectArtist').value.trim();
+  const audio_url = document.getElementById('mdlDirectUrl').value.trim();
+  const val = document.getElementById('mdlTargetDir').value;
+  if (!title || !audio_url || !val) { alert('歌名、音频直链与保存目录不能为空'); return; }
+  const [targetDir, libId] = val.split('|');
+  const r = await api('/api/admin/music/download', {
+    method: 'POST',
+    body: { title, artist, audio_url, target_dir: targetDir, lib_id: libId }
+  });
+  if (r.code !== 0) { alert(r.msg); return; }
+  loadMusicTasks();
+}
+
+async function loadMusicTasks() {
+  const r = await api('/api/admin/music/tasks');
+  const list = r.data || [];
+  const tb = document.getElementById('mdlTasksTbody');
+  if (!list.length) {
+    tb.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">暂无任务</td></tr>';
+    return;
+  }
+  tb.innerHTML = list.map(t => `
+    <tr>
+      <td><b>${esc(t.title)}</b></td>
+      <td>${esc(t.artist || '--')}</td>
+      <td style="font-size:12px;color:var(--muted)">${esc(t.file_path || t.target_dir)}</td>
+      <td><span class="badge">${esc(t.status)}</span></td>
+      <td style="font-size:12px">${esc(t.message)}</td>
+    </tr>
+  `).join('');
+  if (list.some(t => t.status === 'queued' || t.status === 'downloading' || t.status === 'enriching' || t.status === 'transcoding')) {
+    setTimeout(loadMusicTasks, 2000);
+  }
 }
 
 if (token) initDashboard();
