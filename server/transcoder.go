@@ -543,49 +543,71 @@ func (t *Transcoder) PrewarmAllAudioCache(s *Store, qualityKey string) {
 	if kbps <= 0 {
 		kbps = 320
 	}
-	cachedCount := 0
-	newCount := 0
+	cachedCount := int64(0)
+	newCount := int64(0)
+	var cntMu sync.Mutex
+
+	workers := 2
+	jobs := make(chan *MediaItem, len(audioItems))
 	for _, it := range audioItems {
-		if s.GetSettings().DisableAudioPrewarm {
-			break
-		}
-		sessDir := filepath.Join(t.audioCacheDir, it.Guid+"_"+qualityKey)
-		m3u8Path := filepath.Join(sessDir, "index.m3u8")
-		if isCompletedHLS(m3u8Path) {
-			cachedCount++
-			continue
-		}
-		tmpDir := sessDir + ".pre.tmp"
-		_ = os.RemoveAll(tmpDir)
-		if err := os.MkdirAll(tmpDir, 0755); err != nil {
-			continue
-		}
-		tmpM3u8 := filepath.Join(tmpDir, "index.m3u8")
-		segPattern := filepath.Join(tmpDir, "seg_%05d.ts")
-		cmd := exec.Command(t.ffmpegPath,
-			"-y", "-v", "quiet", "-i", it.FilePath,
-			"-vn", "-c:a", "aac", "-b:a", fmt.Sprintf("%dk", kbps), "-ac", "2",
-			"-f", "hls", "-hls_time", "2", "-hls_list_size", "0",
-			"-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
-			"-hls_segment_filename", segPattern, tmpM3u8,
-		)
-		if err := cmd.Run(); err == nil && isCompletedHLS(tmpM3u8) {
-			_ = os.RemoveAll(sessDir)
-			if os.Rename(tmpDir, sessDir) == nil {
-				newCount++
-				cachedCount++
-				if newCount%10 == 1 || newCount <= 3 {
-					log.Printf("[AudioPrewarm] 已预缓存 %d/%d 首 (%s): %s", cachedCount, len(audioItems), qualityKey, it.Title)
-				}
-			} else {
-				_ = os.RemoveAll(tmpDir)
-			}
-		} else {
-			_ = os.RemoveAll(tmpDir)
-		}
-		// 稍微让出 CPU，避免后台预缓存影响实时看片
-		time.Sleep(300 * time.Millisecond)
+		jobs <- it
 	}
+	close(jobs)
+
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for it := range jobs {
+				if s.GetSettings().DisableAudioPrewarm {
+					return
+				}
+				sessDir := filepath.Join(t.audioCacheDir, it.Guid+"_"+qualityKey)
+				m3u8Path := filepath.Join(sessDir, "index.m3u8")
+				if isCompletedHLS(m3u8Path) {
+					cntMu.Lock()
+					cachedCount++
+					cntMu.Unlock()
+					continue
+				}
+				tmpDir := sessDir + ".pre.tmp"
+				_ = os.RemoveAll(tmpDir)
+				if err := os.MkdirAll(tmpDir, 0755); err != nil {
+					continue
+				}
+				tmpM3u8 := filepath.Join(tmpDir, "index.m3u8")
+				segPattern := filepath.Join(tmpDir, "seg_%05d.ts")
+				cmd := exec.Command(t.ffmpegPath,
+					"-y", "-v", "quiet", "-i", it.FilePath,
+					"-vn", "-c:a", "aac", "-b:a", fmt.Sprintf("%dk", kbps), "-ac", "2",
+					"-f", "hls", "-hls_time", "2", "-hls_list_size", "0",
+					"-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
+					"-hls_segment_filename", segPattern, tmpM3u8,
+				)
+				if err := cmd.Run(); err == nil && isCompletedHLS(tmpM3u8) {
+					_ = os.RemoveAll(sessDir)
+					if os.Rename(tmpDir, sessDir) == nil {
+						cntMu.Lock()
+						newCount++
+						cachedCount++
+						curNew := newCount
+						curCached := cachedCount
+						cntMu.Unlock()
+						if curNew <= 5 || curNew%5 == 0 {
+							log.Printf("[AudioPrewarm] 已预缓存 %d/%d 首 (%s): %s", curCached, len(audioItems), qualityKey, it.Title)
+						}
+					} else {
+						_ = os.RemoveAll(tmpDir)
+					}
+				} else {
+					_ = os.RemoveAll(tmpDir)
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		}()
+	}
+	wg.Wait()
 	if newCount > 0 {
 		log.Printf("[AudioPrewarm] 本轮预缓存完成：新增 %d 首，总计已缓存 %d/%d 首 (%s)", newCount, cachedCount, len(audioItems), qualityKey)
 	}
