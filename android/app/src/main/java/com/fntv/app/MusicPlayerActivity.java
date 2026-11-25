@@ -429,6 +429,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
                     pt ? "✋ 关闭穿透模式（恢复浮窗可点击/拖动）" : "👻 开启穿透模式（触摸直接透传到下层窗口）",
                     "📏 自定义浮窗长度 (当前：" + wLabel + ")",
                     "🔤 调整歌词字体大小 (当前：" + FloatingLyricsService.getLyricFontSp(this) + "sp)",
+                    "🎨 浮窗透明度与歌词颜色",
                     "🪟 关闭悬浮歌词"
             };
             new AlertDialog.Builder(this)
@@ -447,6 +448,8 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
                                 showFloatWidthDialog();
                             } else if (which == 2) {
                                 showFontSizeDialog();
+                            } else if (which == 3) {
+                                showFloatStyleDialog();
                             } else {
                                 stopService(new Intent(MusicPlayerActivity.this, FloatingLyricsService.class));
                                 updateFloatingBtnState();
@@ -523,6 +526,54 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
                     }
                 })
                 .show();
+    }
+
+    private void showFloatStyleDialog() {
+        String[] opts = {"🌗 调整浮窗背景透明度", "🎨 选择高亮歌词颜色"};
+        new AlertDialog.Builder(this)
+                .setTitle("🎨 悬浮窗外观设置")
+                .setItems(opts, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which == 0) {
+                            final int[] alphas = {0xFF, 0xCC, 0x99, 0x66, 0x33};
+                            final String[] aLabels = {"100% 不透明", "80% 默认微透", "60% 半透明", "40% 轻透", "20% 极简透明"};
+                            int cur = FloatingLyricsService.getBgAlpha(MusicPlayerActivity.this);
+                            int checked = 1;
+                            for (int i = 0; i < alphas.length; i++) {
+                                if (alphas[i] == cur) { checked = i; break; }
+                            }
+                            new AlertDialog.Builder(MusicPlayerActivity.this)
+                                    .setTitle("选择浮窗背景透明度")
+                                    .setSingleChoiceItems(aLabels, checked, new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface d2, int w2) {
+                                            FloatingLyricsService.setBgAlpha(MusicPlayerActivity.this, alphas[w2]);
+                                            Toast.makeText(MusicPlayerActivity.this, "透明度已设为：" + aLabels[w2], Toast.LENGTH_SHORT).show();
+                                            d2.dismiss();
+                                        }
+                                    }).show();
+                        } else {
+                            final String[] colors = {"#38BDF8", "#34D399", "#FBBF24", "#FFFFFF", "#F472B6"};
+                            final String[] cLabels = {"天空蓝 (默认)", "翡翠绿 (护眼)", "琥珀黄 (强光醒目)", "纯白", "樱花粉"};
+                            String cur = FloatingLyricsService.getLyricColorHex(MusicPlayerActivity.this);
+                            int checked = 0;
+                            for (int i = 0; i < colors.length; i++) {
+                                if (colors[i].equalsIgnoreCase(cur)) { checked = i; break; }
+                            }
+                            new AlertDialog.Builder(MusicPlayerActivity.this)
+                                    .setTitle("选择高亮歌词颜色")
+                                    .setSingleChoiceItems(cLabels, checked, new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface d2, int w2) {
+                                            FloatingLyricsService.setLyricColorHex(MusicPlayerActivity.this, colors[w2]);
+                                            Toast.makeText(MusicPlayerActivity.this, "歌词颜色已设为：" + cLabels[w2], Toast.LENGTH_SHORT).show();
+                                            d2.dismiss();
+                                        }
+                                    }).show();
+                        }
+                    }
+                }).show();
     }
 
     private void updateFloatingBtnState() {

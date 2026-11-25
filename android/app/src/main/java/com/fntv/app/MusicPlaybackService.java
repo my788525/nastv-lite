@@ -353,8 +353,11 @@ public class MusicPlaybackService extends Service {
         fallbackDirectTried = false;
 
         if (playUri.contains(".m3u8")) {
-            player.setMediaSource(new HlsMediaSource.Factory(
-                    directDataSourceFactory != null ? directDataSourceFactory : activeDataSourceFactory)
+            boolean useMusicCache = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getBoolean("pref_music_cache", true);
+            DataSource.Factory hlsFactory = useMusicCache
+                    ? VideoCacheManager.createDataSourceFactory(this, FnApiManager.getInstance().getStreamClient(), true, true)
+                    : (directDataSourceFactory != null ? directDataSourceFactory : activeDataSourceFactory);
+            player.setMediaSource(new HlsMediaSource.Factory(hlsFactory)
                     .setAllowChunklessPreparation(true)
                     .createMediaSource(MediaItem.fromUri(Uri.parse(playUri))));
         } else {
@@ -366,6 +369,10 @@ public class MusicPlaybackService extends Service {
                     .createMediaSource(MediaItem.fromUri(Uri.parse(playUri))));
         }
         player.prepare();
+        if (pendingSeekOnStartMs > 1000) {
+            player.seekTo(pendingSeekOnStartMs);
+            pendingSeekOnStartMs = 0;
+        }
         player.play();
 
         updateMediaSessionMetadata(item);
@@ -376,6 +383,77 @@ public class MusicPlaybackService extends Service {
 
         fetchLyrics(item);
         schedulePrefetchNextTracks(index, baseUrl);
+        saveLastSession();
+    }
+
+    private static volatile long pendingSeekOnStartMs = 0;
+
+    public void saveLastSession() {
+        try {
+            PlayListItem cur = getCurrentItem();
+            if (cur == null) return;
+            org.json.JSONArray arr = new org.json.JSONArray();
+            synchronized (queue) {
+                int cap = Math.min(queue.size(), 100);
+                for (int i = 0; i < cap; i++) {
+                    PlayListItem it = queue.get(i);
+                    org.json.JSONObject o = new org.json.JSONObject();
+                    o.put("guid", it.guid != null ? it.guid : "");
+                    o.put("title", it.title != null ? it.title : "");
+                    o.put("duration", it.duration);
+                    o.put("artist", it.artist != null ? it.artist : "");
+                    o.put("album", it.album != null ? it.album : "");
+                    arr.put(o);
+                }
+            }
+            long pos = player != null ? Math.max(0L, player.getCurrentPosition()) : 0L;
+            getSharedPreferences("fntv_prefs", MODE_PRIVATE).edit()
+                    .putString("music_last_queue", arr.toString())
+                    .putInt("music_last_index", Math.max(0, currentIndex))
+                    .putLong("music_last_pos_ms", pos)
+                    .putString("music_last_title", cur.title != null ? cur.title : "")
+                    .apply();
+        } catch (Throwable ignored) {}
+    }
+
+    public static String getSavedSessionSummary(Context ctx) {
+        if (ctx == null) return null;
+        android.content.SharedPreferences sp = ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE);
+        String q = sp.getString("music_last_queue", "");
+        String t = sp.getString("music_last_title", "");
+        if (q == null || q.isEmpty() || t == null || t.isEmpty()) return null;
+        long sec = Math.max(0L, sp.getLong("music_last_pos_ms", 0L) / 1000L);
+        return String.format(java.util.Locale.US, "%s · %02d:%02d", t, sec / 60, sec % 60);
+    }
+
+    public static boolean resumeLastSession(Context ctx) {
+        if (ctx == null) return false;
+        android.content.SharedPreferences sp = ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE);
+        String json = sp.getString("music_last_queue", "");
+        if (json == null || json.isEmpty()) return false;
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray(json);
+            if (arr.length() == 0) return false;
+            List<PlayListItem> list = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject o = arr.getJSONObject(i);
+                PlayListItem it = new PlayListItem();
+                it.guid = o.optString("guid", "");
+                it.title = o.optString("title", "");
+                it.duration = o.optLong("duration", 0L);
+                it.artist = o.optString("artist", "");
+                it.album = o.optString("album", "");
+                it.type = "Audio";
+                if (!it.guid.isEmpty()) list.add(it);
+            }
+            if (list.isEmpty()) return false;
+            int idx = Math.max(0, Math.min(sp.getInt("music_last_index", 0), list.size() - 1));
+            pendingSeekOnStartMs = Math.max(0L, sp.getLong("music_last_pos_ms", 0L));
+            startQueue(ctx, list, idx);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private String buildOnlineAudioUrl(String baseUrl, String guid) {
@@ -562,6 +640,7 @@ public class MusicPlaybackService extends Service {
     }
 
     public void pause() {
+        saveLastSession();
         if (player != null) player.pause();
     }
 
@@ -747,7 +826,7 @@ public class MusicPlaybackService extends Service {
         String title = item != null ? item.title : "NASFun 音乐";
         String sub = currentArtist.isEmpty() ? "正在播放 NAS 音乐" : currentArtist;
 
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        NotificationCompat.Builder b = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(title)
                 .setContentText(sub)
@@ -758,12 +837,20 @@ public class MusicPlaybackService extends Service {
                 .addAction(isPlaying() ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
                         isPlaying() ? "暂停" : "播放", togglePi)
                 .addAction(android.R.drawable.ic_media_next, "下一首", nextPi)
-                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止", stopPi)
-                .build();
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止", stopPi);
+
+        boolean useMediaStyle = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getBoolean("pref_media_style_notif", false);
+        if (useMediaStyle && mediaSession != null) {
+            b.setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
+                    .setMediaSession(mediaSession.getSessionToken())
+                    .setShowActionsInCompactView(0, 1, 2));
+        }
+        return b.build();
     }
 
     @Override
     public void onDestroy() {
+        saveLastSession();
         instance = null;
         if (audioManager != null) audioManager.abandonAudioFocus(focusListener);
         if (wakeLock != null && wakeLock.isHeld()) {

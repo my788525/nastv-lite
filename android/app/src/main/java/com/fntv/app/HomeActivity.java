@@ -103,12 +103,14 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
             rlMenuPanelSetting, rlDpadAccelSetting, rlSleepTimerSetting, rlVocalBoostSetting,
             rlDefaultQualitySetting, rlBufferProfileSetting, rlWeakNetRetrySetting,
             rlVideoCodecSetting, rlHlsContainerSetting, rlHlsSegSetting, rlHttpGzipSetting,
-            rlVideoCacheSetting, rlHlsPrefetchSetting, rlServerHwDecodeSetting;
+            rlVideoCacheSetting, rlHlsPrefetchSetting, rlServerHwDecodeSetting,
+            rlMediaStyleNotifSetting, rlMusicCacheSetting, rlLowBwImgSetting, rlNetAutoResumeSetting;
     private TextView tvPlayModeValue, tvScreenOffValue, tvAutoResumeValue, tvPinyinSearchValue,
             tvMenuPanelValue, tvDpadAccelValue, tvSleepTimerValue, tvVocalBoostValue,
             tvDefaultQualityValue, tvBufferProfileValue, tvWeakNetRetryValue,
             tvVideoCodecValue, tvHlsContainerValue, tvHlsSegValue, tvHttpGzipValue,
-            tvVideoCacheValue, tvHlsPrefetchValue, tvServerHwDecodeValue;
+            tvVideoCacheValue, tvHlsPrefetchValue, tvServerHwDecodeValue,
+            tvMediaStyleNotifValue, tvMusicCacheValue, tvLowBwImgValue, tvNetAutoResumeValue;
     private boolean hasAutoResumedOnStartup = false;
     private final Map<String, String> libModeOverrides = new HashMap<>();
 
@@ -357,6 +359,15 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         tvHlsPrefetchValue = findViewById(R.id.tvHlsPrefetchValue);
         rlServerHwDecodeSetting = findViewById(R.id.rlServerHwDecodeSetting);
         tvServerHwDecodeValue = findViewById(R.id.tvServerHwDecodeValue);
+        rlMediaStyleNotifSetting = findViewById(R.id.rlMediaStyleNotifSetting);
+        tvMediaStyleNotifValue = findViewById(R.id.tvMediaStyleNotifValue);
+        rlMusicCacheSetting = findViewById(R.id.rlMusicCacheSetting);
+        tvMusicCacheValue = findViewById(R.id.tvMusicCacheValue);
+        rlLowBwImgSetting = findViewById(R.id.rlLowBwImgSetting);
+        tvLowBwImgValue = findViewById(R.id.tvLowBwImgValue);
+        rlNetAutoResumeSetting = findViewById(R.id.rlNetAutoResumeSetting);
+        tvNetAutoResumeValue = findViewById(R.id.tvNetAutoResumeValue);
+        SimpleImageLoader.lowBandwidthMode = prefs.getBoolean("pref_low_bw_img", true);
         com.fntv.app.api.AuthInterceptor.enableGzip = prefs.getBoolean("pref_http_gzip", true);
 
         TextView tvVersion = findViewById(R.id.tvVersionName);
@@ -3954,6 +3965,68 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
             });
         }
 
+        // 19. 车机 MediaStyle 通知卡片联动 (默认关闭，支持的新款车机可开启)
+        boolean curMediaStyle = prefs.getBoolean("pref_media_style_notif", false);
+        if (tvMediaStyleNotifValue != null) {
+            tvMediaStyleNotifValue.setText(curMediaStyle ? "已开启 (桌面/方向盘联动)" : "已关闭");
+        }
+        if (rlMediaStyleNotifSetting != null) {
+            rlMediaStyleNotifSetting.setOnClickListener(v -> {
+                boolean next = !prefs.getBoolean("pref_media_style_notif", false);
+                prefs.edit().putBoolean("pref_media_style_notif", next).apply();
+                if (tvMediaStyleNotifValue != null) {
+                    tvMediaStyleNotifValue.setText(next ? "已开启 (桌面/方向盘联动)" : "已关闭");
+                }
+            });
+        }
+
+        // 20. 在线音乐 HLS 环形缓存
+        boolean curMusicCache = prefs.getBoolean("pref_music_cache", true);
+        if (tvMusicCacheValue != null) {
+            tvMusicCacheValue.setText(curMusicCache ? "已开启 (回放免流量)" : "已关闭");
+        }
+        if (rlMusicCacheSetting != null) {
+            rlMusicCacheSetting.setOnClickListener(v -> {
+                boolean next = !prefs.getBoolean("pref_music_cache", true);
+                prefs.edit().putBoolean("pref_music_cache", next).apply();
+                if (tvMusicCacheValue != null) {
+                    tvMusicCacheValue.setText(next ? "已开启 (回放免流量)" : "已关闭");
+                }
+            });
+        }
+
+        // 21. 弱网海报缩略图省流 (300px)
+        boolean curLowImg = prefs.getBoolean("pref_low_bw_img", true);
+        SimpleImageLoader.lowBandwidthMode = curLowImg;
+        if (tvLowBwImgValue != null) {
+            tvLowBwImgValue.setText(curLowImg ? "已开启 (省75%图片流量)" : "已关闭 (原图)");
+        }
+        if (rlLowBwImgSetting != null) {
+            rlLowBwImgSetting.setOnClickListener(v -> {
+                boolean next = !prefs.getBoolean("pref_low_bw_img", true);
+                prefs.edit().putBoolean("pref_low_bw_img", next).apply();
+                SimpleImageLoader.lowBandwidthMode = next;
+                if (tvLowBwImgValue != null) {
+                    tvLowBwImgValue.setText(next ? "已开启 (省75%图片流量)" : "已关闭 (原图)");
+                }
+            });
+        }
+
+        // 22. Wi-Fi / 4G 切换自动续播
+        boolean curNetRes = prefs.getBoolean("pref_net_auto_resume", true);
+        if (tvNetAutoResumeValue != null) {
+            tvNetAutoResumeValue.setText(curNetRes ? "已开启 (含剧集末段预热)" : "已关闭");
+        }
+        if (rlNetAutoResumeSetting != null) {
+            rlNetAutoResumeSetting.setOnClickListener(v -> {
+                boolean next = !prefs.getBoolean("pref_net_auto_resume", true);
+                prefs.edit().putBoolean("pref_net_auto_resume", next).putBoolean("pref_next_ep_prewarm", next).apply();
+                if (tvNetAutoResumeValue != null) {
+                    tvNetAutoResumeValue.setText(next ? "已开启 (含剧集末段预热)" : "已关闭");
+                }
+            });
+        }
+
         apiManager.getApi().getUserInfo().enqueue(new Callback<ApiResponse<UserInfoResponse>>() {
             @Override
             public void onResponse(Call<ApiResponse<UserInfoResponse>> call,
@@ -4283,6 +4356,16 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
             }
         });
         actionRow.addView(btnOpenPlayer);
+
+        String savedMusicSummary = MusicPlaybackService.getSavedSessionSummary(this);
+        if (savedMusicSummary != null && (MusicPlaybackService.getInstance() == null || MusicPlaybackService.getInstance().getCurrentItem() == null)) {
+            Button btnResumeLast = makeHubActionBtn("▶ 续播: " + savedMusicSummary, 0xFFFBBF24, v -> {
+                if (MusicPlaybackService.resumeLastSession(this)) {
+                    startActivity(new Intent(this, MusicPlayerActivity.class));
+                }
+            });
+            actionRow.addView(btnResumeLast);
+        }
 
         if (offCnt > 0) {
             Button btnPlayOffline = makeHubActionBtn("💾 播放本地离线 (" + offCnt + ")", 0xFF38BDF8, v -> {

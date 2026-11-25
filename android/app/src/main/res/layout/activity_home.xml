@@ -1116,6 +1116,126 @@ DPAD 遥控器友好
                                 android:textSize="14sp" />
                         </RelativeLayout>
 
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 19. 车机 MediaStyle 通知卡片联动 -->
+                        <RelativeLayout
+                            android:id="@+id/rlMediaStyleNotifSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="车机 MediaStyle 通知联动"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvMediaStyleNotifValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="已关闭"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 20. 在线音乐 HLS 环形缓存 -->
+                        <RelativeLayout
+                            android:id="@+id/rlMusicCacheSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="在线音乐 HLS 环形缓存"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvMusicCacheValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="已开启 (回放免流量)"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 21. 弱网海报缩略图省流 -->
+                        <RelativeLayout
+                            android:id="@+id/rlLowBwImgSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="海报缩略图省流 (300px)"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvLowBwImgValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="已开启 (省75%图片流量)"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 22. 切网自动续播 + 剧集末段预热 -->
+                        <RelativeLayout
+                            android:id="@+id/rlNetAutoResumeSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="Wi-Fi/4G 切换自动续播"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvNetAutoResumeValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="已开启"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
                     </LinearLayout>
 
                     <!-- 关于 -->

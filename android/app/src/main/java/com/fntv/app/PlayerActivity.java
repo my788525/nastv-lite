@@ -52,6 +52,10 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView tvBannerMainTitle, tvBannerSubInfo, tvBannerNextInfo;
     private Button btnCloudMode, btnBrightness, btnSkip;
     private boolean introSkipped = false, outroSkipped = false, endingBannerShown = false;
+    private boolean nextEpPrewarmed = false;
+    private boolean pendingNetResume = false;
+    private long pendingNetResumePosMs = 0;
+    private android.content.BroadcastReceiver netChangeReceiver;
     private float speedBeforeLongPress = 1.0f;
     private DanmuView danmuView;
     private View controller, infoPanel, topBar;
@@ -154,6 +158,7 @@ public class PlayerActivity extends AppCompatActivity {
             ms.pause();
         }
         setContentView(R.layout.activity_player);
+        registerNetworkReceiver();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(Color.BLACK);
             getWindow().setNavigationBarColor(Color.BLACK);
@@ -290,6 +295,8 @@ public class PlayerActivity extends AppCompatActivity {
                 introSkipped = false;
                 outroSkipped = false;
                 endingBannerShown = false;
+        nextEpPrewarmed = false;
+        pendingNetResume = false;
                 itemGuid = guid;
                 itemTitle = title;
                 itemDuration = 0;
@@ -751,7 +758,11 @@ public class PlayerActivity extends AppCompatActivity {
                     handler.post(() -> recreatePlayerWithSwDecoder());
                     return;
                 }
-                // 2) 按响应码切换 HLS / 渐进式
+                // 2) 记录网络中断恢复点（Wi-Fi <-> 4G/5G 切换自动续播）
+                if (!isCodec && player != null) {
+                    pendingNetResume = true;
+                    pendingNetResumePosMs = Math.max(0L, player.getCurrentPosition());
+                }
                 int code = OkHttpExoDataSource.lastResponseCode;
                 if (code == 200 && !useHls && cloudStreamManager.hasDirectUrl()) {
                     useHls = true;
@@ -971,6 +982,8 @@ public class PlayerActivity extends AppCompatActivity {
     private void startPlayback() {
         if (mediaGuid == null) return;
         endingBannerShown = false;
+        nextEpPrewarmed = false;
+        pendingNetResume = false;
         if (qualityRetry == 0) baseQualityIndex = cloudStreamManager.getQualityIndex();
         CloudStreamManager.PlaybackConfig cfg = cloudStreamManager.getPlaybackConfig(baseUrl, mediaGuid);
         String playUrl = cfg.url;
@@ -1724,6 +1737,10 @@ public class PlayerActivity extends AppCompatActivity {
                 }
             }
             long remainingMs = effectiveEndMs - cur;
+            if (remainingMs <= 35000 && remainingMs > 0 && !nextEpPrewarmed) {
+                nextEpPrewarmed = true;
+                prewarmNextEpisode();
+            }
             if (remainingMs <= 10000 && remainingMs > 0) {
                 if (!endingBannerShown) {
                     endingBannerShown = true;
@@ -1731,6 +1748,8 @@ public class PlayerActivity extends AppCompatActivity {
                 }
             } else if (remainingMs > 12000) {
                 endingBannerShown = false;
+        nextEpPrewarmed = false;
+        pendingNetResume = false;
             }
         }
         } catch (Throwable t) {
@@ -2572,7 +2591,67 @@ public class PlayerActivity extends AppCompatActivity {
                 .show();
     }
 
+    private void registerNetworkReceiver() {
+        netChangeReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context ctx, android.content.Intent intent) {
+                if (!pendingNetResume || player == null || savedPlaybackUrl == null || savedPlaybackUrl.isEmpty()) return;
+                if (!getSharedPreferences("fntv_prefs", MODE_PRIVATE).getBoolean("pref_net_auto_resume", true)) return;
+                android.net.ConnectivityManager cm = (android.net.ConnectivityManager) ctx.getSystemService(CONNECTIVITY_SERVICE);
+                android.net.NetworkInfo ni = cm != null ? cm.getActiveNetworkInfo() : null;
+                if (ni != null && ni.isConnected()) {
+                    pendingNetResume = false;
+                    final long resumePos = pendingNetResumePosMs;
+                    handler.postDelayed(() -> {
+                        if (isFinishing() || player == null) return;
+                        Toast.makeText(PlayerActivity.this, "网络已恢复，自动续播...", Toast.LENGTH_SHORT).show();
+                        com.google.android.exoplayer2.upstream.DataSource.Factory f = buildStreamDataSourceFactory();
+                        if (useHls || savedPlaybackUrl.contains(".m3u8")) {
+                            player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f)
+                                    .setAllowChunklessPreparation(true)
+                                    .createMediaSource(MediaItem.fromUri(savedPlaybackUrl)));
+                        } else {
+                            player.setMediaSource(new com.google.android.exoplayer2.source.ProgressiveMediaSource.Factory(f, new DefaultExtractorsFactory())
+                                    .createMediaSource(MediaItem.fromUri(savedPlaybackUrl)));
+                        }
+                        if (resumePos > 1000) player.seekTo(resumePos);
+                        player.prepare();
+                        player.setPlayWhenReady(true);
+                    }, 800);
+                }
+            }
+        };
+        try {
+            registerReceiver(netChangeReceiver, new android.content.IntentFilter(android.net.ConnectivityManager.CONNECTIVITY_ACTION));
+        } catch (Throwable ignored) {}
+    }
+
+    private void prewarmNextEpisode() {
+        if (episodeManager == null || baseUrl == null || baseUrl.isEmpty()) return;
+        if (!getSharedPreferences("fntv_prefs", MODE_PRIVATE).getBoolean("pref_next_ep_prewarm", true)) return;
+        final com.fntv.app.api.model.PlayListItem nextEp = episodeManager.getNextEpisodeItem();
+        if (nextEp == null || nextEp.guid == null || nextEp.guid.isEmpty()) return;
+        String defQ = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_default_quality", "original");
+        if (defQ == null || "original".equals(defQ)) return;
+        final String nextUrl = appendHlsParams("auto".equals(defQ)
+                ? (baseUrl + "/v/api/v1/hls/" + nextEp.guid + "/auto/master.m3u8")
+                : (baseUrl + "/v/api/v1/hls/" + nextEp.guid + "/" + defQ + "/index.m3u8"));
+        new Thread(() -> {
+            try {
+                okhttp3.Request req = new okhttp3.Request.Builder().url(nextUrl).build();
+                try (okhttp3.Response resp = apiManager.getStreamClient().newCall(req).execute()) {
+                    if (resp.body() != null) resp.body().close();
+                }
+                Log.d(TAG, "已预热下一集 HLS: " + nextEp.title);
+            } catch (Throwable ignored) {}
+        }).start();
+    }
+
     @Override protected void onDestroy() {
+        if (netChangeReceiver != null) {
+            try { unregisterReceiver(netChangeReceiver); } catch (Throwable ignored) {}
+            netChangeReceiver = null;
+        }
         if (isFolderPlaylist && folderGuid != null && !folderGuid.isEmpty() && player != null) {
             long curPos = player.getCurrentPosition();
             if (curPos > 0) saveFolderProgress(folderGuid, itemGuid, curPos / 1000);

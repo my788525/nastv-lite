@@ -582,6 +582,17 @@ func (app *App) handleImg(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if reqW, err := strconv.Atoi(r.URL.Query().Get("w")); err == nil && reqW >= 120 && reqW <= 600 && app.transcoder.ffmpegPath != "" {
+		scaledPath := filepath.Join(app.transcoder.thumbDir, fmt.Sprintf("%s_w%d.jpg", guid, reqW))
+		if _, stErr := os.Stat(scaledPath); stErr != nil {
+			cmd := exec.Command(app.transcoder.ffmpegPath, "-y", "-v", "quiet", "-i", p,
+				"-vf", fmt.Sprintf("scale=%d:-1", reqW), "-q:v", "7", scaledPath)
+			_ = cmd.Run()
+		}
+		if st, stErr := os.Stat(scaledPath); stErr == nil && st.Size() > 0 {
+			p = scaledPath
+		}
+	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	http.ServeFile(w, r, p)
 }

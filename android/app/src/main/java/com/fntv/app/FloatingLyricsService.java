@@ -41,6 +41,8 @@ public class FloatingLyricsService extends Service {
     public static final String PREF_PASSTHROUGH = "float_lrc_passthrough";
     public static final String PREF_LYRIC_FONT_SP = "music_lyric_font_sp";
     public static final String PREF_FLOAT_WIDTH_DP = "float_lrc_width_dp";
+    public static final String PREF_ALPHA = "float_lrc_alpha";
+    public static final String PREF_LYRIC_COLOR = "float_lrc_color";
     public static final String ACTION_REFRESH_FLAGS = "com.fntv.app.FLOAT_REFRESH_FLAGS";
 
     public static final int TIER_LYRICS_ONLY = 0;
@@ -69,6 +71,26 @@ public class FloatingLyricsService extends Service {
         if (ctx == null) return;
         ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).edit().putInt(PREF_FLOAT_WIDTH_DP, widthDp).apply();
         if (instance != null) instance.applyFontAndWidth();
+    }
+
+    public static int getBgAlpha(Context ctx) {
+        return ctx != null ? ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).getInt(PREF_ALPHA, 0xCC) : 0xCC;
+    }
+
+    public static void setBgAlpha(Context ctx, int alpha) {
+        if (ctx == null) return;
+        ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).edit().putInt(PREF_ALPHA, alpha).apply();
+        if (instance != null) instance.applyBgAndColor();
+    }
+
+    public static String getLyricColorHex(Context ctx) {
+        return ctx != null ? ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString(PREF_LYRIC_COLOR, "#38BDF8") : "#38BDF8";
+    }
+
+    public static void setLyricColorHex(Context ctx, String hex) {
+        if (ctx == null) return;
+        ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).edit().putString(PREF_LYRIC_COLOR, hex).apply();
+        if (instance != null) instance.applyBgAndColor();
     }
 
     public static boolean isPassThrough(Context ctx) {
@@ -131,6 +153,7 @@ public class FloatingLyricsService extends Service {
         buildOverlayView();
         applyTierLayout();
         applyPassThrough(passThrough);
+        applyBgAndColor();
         handler.post(tickRunnable);
     }
 
@@ -319,14 +342,29 @@ public class FloatingLyricsService extends Service {
         } else {
             lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
         }
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(enable ? 0x800B1120 : 0xCC0B1120);
-        bg.setCornerRadius(dp(14));
-        bg.setStroke(dp(1), enable ? 0x2238BDF8 : 0x4438BDF8);
-        rootLayout.setBackground(bg);
+        applyBgAndColor();
         try {
             windowManager.updateViewLayout(rootLayout, lp);
         } catch (Exception ignored) {}
+    }
+
+    private void applyBgAndColor() {
+        if (rootLayout != null) {
+            int baseAlpha = getBgAlpha(this);
+            int effAlpha = passThrough ? Math.max(0x20, baseAlpha * 2 / 3) : baseAlpha;
+            int bgColor = (effAlpha << 24) | 0x0B1120;
+            int strokeColor = ((Math.max(0x10, effAlpha / 3)) << 24) | 0x38BDF8;
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(bgColor);
+            bg.setCornerRadius(dp(14));
+            bg.setStroke(dp(1), strokeColor);
+            rootLayout.setBackground(bg);
+        }
+        if (tvLyricMain != null) {
+            try {
+                tvLyricMain.setTextColor(Color.parseColor(getLyricColorHex(this)));
+            } catch (Exception ignored) {}
+        }
     }
 
     private void applyFontAndWidth() {

@@ -25,6 +25,7 @@ import okhttp3.Response;
  */
 public class SimpleImageLoader {
 
+    public static volatile boolean lowBandwidthMode = true;
     private static final String TAG = "ImageLoader";
 
     // 动态计算缓存大小：堆内存的 1/8，介于 16MB 到 64MB 之间
@@ -69,7 +70,11 @@ public class SimpleImageLoader {
             return;
         }
 
-        final String cleanUrl = url.trim();
+        String rawClean = url.trim();
+        if (lowBandwidthMode && rawClean.contains("/v/api/v1/img/") && !rawClean.contains("w=")) {
+            rawClean += (rawClean.contains("?") ? "&" : "?") + "w=300";
+        }
+        final String cleanUrl = rawClean;
         view.setTag(cleanUrl);
 
         Bitmap cached = cache.get(cleanUrl);
