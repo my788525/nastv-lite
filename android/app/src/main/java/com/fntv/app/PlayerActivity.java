@@ -358,7 +358,7 @@ public class PlayerActivity extends AppCompatActivity {
                             useHls = fullUrl.contains(".m3u8");
                             com.google.android.exoplayer2.upstream.DataSource.Factory f = () -> new OkHttpExoDataSource(apiManager.getStreamClient());
                             if (useHls) {
-                                player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).createMediaSource(MediaItem.fromUri(fullUrl)));
+                                player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(fullUrl)));
                             } else {
                                 player.setMediaSource(new com.google.android.exoplayer2.source.ProgressiveMediaSource.Factory(f, new DefaultExtractorsFactory()).createMediaSource(MediaItem.fromUri(fullUrl)));
                             }
@@ -807,7 +807,7 @@ public class PlayerActivity extends AppCompatActivity {
                         handler.postDelayed(() -> {
                             if (player != null) {
                                 com.google.android.exoplayer2.upstream.DataSource.Factory f = () -> new OkHttpExoDataSource(apiManager.getStreamClient());
-                                player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).createMediaSource(MediaItem.fromUri(savedPlaybackUrl)));
+                                player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(savedPlaybackUrl)));
                                 player.prepare();
                                 if (resumePos > 0) player.seekTo(resumePos);
                                 player.setPlayWhenReady(true);
@@ -927,7 +927,7 @@ public class PlayerActivity extends AppCompatActivity {
             useHls = true;
             savedPlaybackUrl = baseUrl + "/v/api/v1/hls/" + mediaGuid + "/720p/index.m3u8";
             com.google.android.exoplayer2.upstream.DataSource.Factory f = () -> new OkHttpExoDataSource(apiManager.getStreamClient());
-            player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).createMediaSource(MediaItem.fromUri(savedPlaybackUrl)));
+            player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(savedPlaybackUrl)));
             player.prepare();
             if (resumePos > 0) player.seekTo(resumePos);
             player.setPlayWhenReady(true);
@@ -965,7 +965,7 @@ public class PlayerActivity extends AppCompatActivity {
         savedPlaybackUrl = playUrl;
         com.google.android.exoplayer2.upstream.DataSource.Factory f = () -> new OkHttpExoDataSource(apiManager.getStreamClient());
         if (useHls) {
-            player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).createMediaSource(MediaItem.fromUri(playUrl)));
+            player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(playUrl)));
             Log.d(TAG, "播放器: HLS");
         } else {
             player.setMediaSource(new com.google.android.exoplayer2.source.ProgressiveMediaSource.Factory(f, new DefaultExtractorsFactory()).createMediaSource(MediaItem.fromUri(playUrl)));
@@ -985,7 +985,7 @@ public class PlayerActivity extends AppCompatActivity {
         useHls = url.contains(".m3u8");
         com.google.android.exoplayer2.upstream.DataSource.Factory f = () -> new OkHttpExoDataSource(apiManager.getStreamClient());
         if (useHls) {
-            player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).createMediaSource(MediaItem.fromUri(url)));
+            player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(url)));
             Log.d(TAG, "直播: HLS");
         } else {
             player.setMediaSource(new com.google.android.exoplayer2.source.ProgressiveMediaSource.Factory(f, new DefaultExtractorsFactory()).createMediaSource(MediaItem.fromUri(url)));
@@ -1097,7 +1097,7 @@ public class PlayerActivity extends AppCompatActivity {
             useHls = savedPlaybackUrl.contains(".m3u8");
             com.google.android.exoplayer2.upstream.DataSource.Factory f = () -> new OkHttpExoDataSource(apiManager.getStreamClient());
             if (useHls) {
-                player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).createMediaSource(MediaItem.fromUri(savedPlaybackUrl)));
+                player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).setAllowChunklessPreparation(true).createMediaSource(MediaItem.fromUri(savedPlaybackUrl)));
             } else {
                 player.setMediaSource(new com.google.android.exoplayer2.source.ProgressiveMediaSource.Factory(f, new DefaultExtractorsFactory()).createMediaSource(MediaItem.fromUri(savedPlaybackUrl)));
             }

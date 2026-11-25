@@ -226,8 +226,9 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 	}
 	segSec := cfg.HLSSegmentSec
 	if segSec <= 0 {
-		segSec = 4
+		segSec = 2
 	}
+	gop := segSec * 24
 	preset := cfg.TranscodePreset
 	if preset == "" {
 		preset = "veryfast"
@@ -260,19 +261,21 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 			"-hls_segment_filename", segPattern, m3u8Path,
 		}
 	} else if t.hasVAAPI && cfg.EnableVAAPI {
-		// Intel/AMD VAAPI hardware transcode
+		// Intel/AMD VAAPI hardware transcode with strict GOP & independent HLS segments
 		scaleFilter := fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", prof.Height)
 		args = []string{
 			"-y", "-vaapi_device", "/dev/dri/renderD128",
 			"-i", item.FilePath,
 			"-vf", scaleFilter,
 			"-c:v", "h264_vaapi", "-b:v", fmt.Sprintf("%d", prof.Bitrate),
+			"-g", strconv.Itoa(gop), "-keyint_min", strconv.Itoa(gop), "-sc_threshold", "0",
 			"-c:a", "aac", "-b:a", "192k", "-ac", "2",
 			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
+			"-hls_playlist_type", "event", "-hls_flags", "independent_segments",
 			"-hls_segment_filename", segPattern, m3u8Path,
 		}
 	} else {
-		// Software fallback libx264
+		// Software fallback libx264 with strict GOP & independent HLS segments
 		scaleFilter := fmt.Sprintf("scale=-2:%d", prof.Height)
 		args = []string{
 			"-y", "-i", item.FilePath,
@@ -280,8 +283,10 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 			"-c:v", "libx264", "-preset", preset, "-b:v", fmt.Sprintf("%d", prof.Bitrate),
 			"-maxrate", fmt.Sprintf("%d", prof.Bitrate*12/10),
 			"-bufsize", fmt.Sprintf("%d", prof.Bitrate*2),
+			"-g", strconv.Itoa(gop), "-keyint_min", strconv.Itoa(gop), "-sc_threshold", "0",
 			"-c:a", "aac", "-b:a", "192k", "-ac", "2",
 			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
+			"-hls_playlist_type", "event", "-hls_flags", "independent_segments",
 			"-hls_segment_filename", segPattern, m3u8Path,
 		}
 	}
@@ -304,9 +309,12 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 	}()
 	t.mu.Unlock()
 
-	// Wait up to 8 seconds for index.m3u8 and at least 1 segment to be written
+	// Wait up to 8 seconds for index.m3u8 and first segment seg_00000.ts to be written
+	firstSeg := filepath.Join(sessDir, "seg_00000.ts")
 	for i := 0; i < 40; i++ {
-		if st, err := os.Stat(m3u8Path); err == nil && st.Size() > 20 {
+		stM, errM := os.Stat(m3u8Path)
+		stS, errS := os.Stat(firstSeg)
+		if errM == nil && stM.Size() > 20 && errS == nil && stS.Size() > 0 {
 			break
 		}
 		time.Sleep(200 * time.Millisecond)
