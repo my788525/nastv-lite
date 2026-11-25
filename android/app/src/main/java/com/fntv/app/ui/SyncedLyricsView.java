@@ -29,6 +29,7 @@ public class SyncedLyricsView extends ScrollView {
     private final List<TextView> lineViews = new ArrayList<>();
     private LyricsParser.Result currentResult;
     private int activeIndex = -2;
+    private int baseFontSp = 15;
     private OnLineClickListener lineClickListener;
 
     public SyncedLyricsView(Context context) {
@@ -54,6 +55,15 @@ public class SyncedLyricsView extends ScrollView {
 
     public void setOnLineClickListener(OnLineClickListener l) {
         this.lineClickListener = l;
+    }
+
+    public void setFontSizeSp(int sp) {
+        this.baseFontSp = Math.max(11, Math.min(32, sp));
+        for (int i = 0; i < lineViews.size(); i++) {
+            TextView tv = lineViews.get(i);
+            boolean active = (i == activeIndex);
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, active ? (baseFontSp + 3) : baseFontSp);
+        }
     }
 
     public void setLyrics(LyricsParser.Result result, String emptyHint) {
@@ -104,11 +114,11 @@ public class SyncedLyricsView extends ScrollView {
             TextView tv = lineViews.get(i);
             if (i == idx) {
                 tv.setTextColor(Color.parseColor("#38BDF8"));
-                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, baseFontSp + 3);
                 tv.setTypeface(null, Typeface.BOLD);
             } else {
                 tv.setTextColor(Color.parseColor("#94A3B8"));
-                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+                tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, baseFontSp);
                 tv.setTypeface(null, Typeface.NORMAL);
             }
         }
@@ -129,7 +139,7 @@ public class SyncedLyricsView extends ScrollView {
         TextView tv = new TextView(getContext());
         tv.setText(text);
         tv.setGravity(Gravity.CENTER);
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, active ? 18 : 15);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, active ? (baseFontSp + 3) : baseFontSp);
         tv.setTextColor(active ? Color.parseColor("#38BDF8") : Color.parseColor("#94A3B8"));
         tv.setPadding(dp(8), dp(8), dp(8), dp(8));
         tv.setLineSpacing(dp(2), 1.15f);

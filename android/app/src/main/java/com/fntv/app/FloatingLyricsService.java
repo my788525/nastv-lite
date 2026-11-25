@@ -39,6 +39,8 @@ public class FloatingLyricsService extends Service {
     private static final String PREF_TIER = "float_lrc_tier";
     private static final String PREF_LOCKED = "float_lrc_locked";
     public static final String PREF_PASSTHROUGH = "float_lrc_passthrough";
+    public static final String PREF_LYRIC_FONT_SP = "music_lyric_font_sp";
+    public static final String PREF_FLOAT_WIDTH_DP = "float_lrc_width_dp";
     public static final String ACTION_REFRESH_FLAGS = "com.fntv.app.FLOAT_REFRESH_FLAGS";
 
     public static final int TIER_LYRICS_ONLY = 0;
@@ -48,6 +50,26 @@ public class FloatingLyricsService extends Service {
     private static FloatingLyricsService instance;
     private static boolean running = false;
     public static boolean isRunning() { return running; }
+
+    public static int getLyricFontSp(Context ctx) {
+        return ctx != null ? ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).getInt(PREF_LYRIC_FONT_SP, 15) : 15;
+    }
+
+    public static void setLyricFontSp(Context ctx, int sp) {
+        if (ctx == null) return;
+        ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).edit().putInt(PREF_LYRIC_FONT_SP, sp).apply();
+        if (instance != null) instance.applyFontAndWidth();
+    }
+
+    public static int getFloatWidthDp(Context ctx) {
+        return ctx != null ? ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).getInt(PREF_FLOAT_WIDTH_DP, 320) : 320;
+    }
+
+    public static void setFloatWidthDp(Context ctx, int widthDp) {
+        if (ctx == null) return;
+        ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).edit().putInt(PREF_FLOAT_WIDTH_DP, widthDp).apply();
+        if (instance != null) instance.applyFontAndWidth();
+    }
 
     public static boolean isPassThrough(Context ctx) {
         return ctx != null && ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).getBoolean(PREF_PASSTHROUGH, false);
@@ -164,18 +186,18 @@ public class FloatingLyricsService extends Service {
         // Main lyric line
         tvLyricMain = new TextView(this);
         tvLyricMain.setTextColor(Color.parseColor("#38BDF8"));
-        tvLyricMain.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        tvLyricMain.setTextSize(TypedValue.COMPLEX_UNIT_SP, getLyricFontSp(this));
         tvLyricMain.setGravity(Gravity.CENTER);
-        tvLyricMain.setMaxLines(1);
+        tvLyricMain.setMaxLines(2);
         tvLyricMain.setEllipsize(TextUtils.TruncateAt.END);
         rootLayout.addView(tvLyricMain);
 
         // Next lyric line
         tvLyricNext = new TextView(this);
         tvLyricNext.setTextColor(Color.parseColor("#CBD5E1"));
-        tvLyricNext.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tvLyricNext.setTextSize(TypedValue.COMPLEX_UNIT_SP, Math.max(10, getLyricFontSp(this) - 3));
         tvLyricNext.setGravity(Gravity.CENTER);
-        tvLyricNext.setMaxLines(1);
+        tvLyricNext.setMaxLines(2);
         tvLyricNext.setEllipsize(TextUtils.TruncateAt.END);
         rootLayout.addView(tvLyricNext);
 
@@ -307,22 +329,36 @@ public class FloatingLyricsService extends Service {
         } catch (Exception ignored) {}
     }
 
+    private void applyFontAndWidth() {
+        int fontSp = getLyricFontSp(this);
+        if (tvLyricMain != null) tvLyricMain.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSp);
+        if (tvLyricNext != null) tvLyricNext.setTextSize(TypedValue.COMPLEX_UNIT_SP, Math.max(10, fontSp - 3));
+        applyTierLayout();
+    }
+
+    private int resolveOverlayWidthPx() {
+        int customDp = getFloatWidthDp(this);
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        if (customDp <= 0) {
+            return Math.max(dp(260), screenW * 9 / 10);
+        }
+        return Math.min(screenW - dp(16), dp(customDp));
+    }
+
     private void applyTierLayout() {
         if (tier == TIER_LYRICS_ONLY) {
             headerRow.setVisibility(View.GONE);
             controlsRow.setVisibility(View.GONE);
-            lp.width = dp(310);
         } else if (tier == TIER_COMPACT) {
             headerRow.setVisibility(View.VISIBLE);
             coverImg.setVisibility(View.GONE);
             controlsRow.setVisibility(View.VISIBLE);
-            lp.width = dp(320);
         } else {
             headerRow.setVisibility(View.VISIBLE);
             coverImg.setVisibility(View.VISIBLE);
             controlsRow.setVisibility(View.VISIBLE);
-            lp.width = dp(350);
         }
+        lp.width = resolveOverlayWidthPx();
         try {
             windowManager.updateViewLayout(rootLayout, lp);
         } catch (Exception ignored) {}

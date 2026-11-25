@@ -129,6 +129,15 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         View spTop2 = new View(this);
         topBar.addView(spTop2, new LinearLayout.LayoutParams(dp(6), 1));
 
+        TextView btnFont = makePillBtn("🔤 字号", "#1E293B");
+        btnFont.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showFontSizeDialog(); }
+        });
+        topBar.addView(btnFont);
+
+        View spTop3 = new View(this);
+        topBar.addView(spTop3, new LinearLayout.LayoutParams(dp(6), 1));
+
         btnFloatLyrics = makePillBtn("🪟 悬浮歌词", "#1E293B");
         btnFloatLyrics.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { toggleFloatingLyrics(); }
@@ -194,6 +203,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         infoPane.addView(tvQualityBadge, badgeLp);
 
         lyricsView = new SyncedLyricsView(this);
+        lyricsView.setFontSizeSp(FloatingLyricsService.getLyricFontSp(this));
         lyricsView.setOnLineClickListener(new SyncedLyricsView.OnLineClickListener() {
             @Override
             public void onSeekTo(long positionMs) {
@@ -413,8 +423,12 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
     private void toggleFloatingLyrics() {
         if (FloatingLyricsService.isRunning()) {
             final boolean pt = FloatingLyricsService.isPassThrough(this);
+            int curW = FloatingLyricsService.getFloatWidthDp(this);
+            String wLabel = curW <= 0 ? "90% 屏宽" : (curW + "dp");
             String[] opts = {
                     pt ? "✋ 关闭穿透模式（恢复浮窗可点击/拖动）" : "👻 开启穿透模式（触摸直接透传到下层窗口）",
+                    "📏 自定义浮窗长度 (当前：" + wLabel + ")",
+                    "🔤 调整歌词字体大小 (当前：" + FloatingLyricsService.getLyricFontSp(this) + "sp)",
                     "🪟 关闭悬浮歌词"
             };
             new AlertDialog.Builder(this)
@@ -429,6 +443,10 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
                                         next ? "已开启穿透：悬浮窗将不再拦截点击" : "已关闭穿透：悬浮窗可正常拖动/点击",
                                         Toast.LENGTH_SHORT).show();
                                 updateFloatingBtnState();
+                            } else if (which == 1) {
+                                showFloatWidthDialog();
+                            } else if (which == 2) {
+                                showFontSizeDialog();
                             } else {
                                 stopService(new Intent(MusicPlayerActivity.this, FloatingLyricsService.class));
                                 updateFloatingBtnState();
@@ -461,6 +479,50 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
             startService(new Intent(this, FloatingLyricsService.class));
             updateFloatingBtnState();
         }
+    }
+
+    private void showFontSizeDialog() {
+        final int[] vals = {13, 15, 18, 22, 26};
+        final String[] labels = {"13sp (紧凑小字)", "15sp (标准默认)", "18sp (清晰较大)", "22sp (车载大字)", "26sp (巨幕超大)"};
+        int cur = FloatingLyricsService.getLyricFontSp(this);
+        int checked = 1;
+        for (int i = 0; i < vals.length; i++) {
+            if (vals[i] == cur) { checked = i; break; }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("🔤 歌词字体大小（同步应用到播放器与浮窗）")
+                .setSingleChoiceItems(labels, checked, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        int sp = vals[which];
+                        FloatingLyricsService.setLyricFontSp(MusicPlayerActivity.this, sp);
+                        if (lyricsView != null) lyricsView.setFontSizeSp(sp);
+                        Toast.makeText(MusicPlayerActivity.this, "歌词字号已设为：" + labels[which], Toast.LENGTH_SHORT).show();
+                        dialog.dismiss();
+                    }
+                })
+                .show();
+    }
+
+    private void showFloatWidthDialog() {
+        final int[] vals = {260, 320, 420, 540, 700, -1};
+        final String[] labels = {"260dp (紧凑)", "320dp (标准默认)", "420dp (加宽)", "540dp (超宽显示完整歌词)", "700dp (车机横屏长条)", "90% 屏幕宽度自适应"};
+        int cur = FloatingLyricsService.getFloatWidthDp(this);
+        int checked = 1;
+        for (int i = 0; i < vals.length; i++) {
+            if (vals[i] == cur) { checked = i; break; }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("📏 自定义悬浮窗长度（宽度）")
+                .setSingleChoiceItems(labels, checked, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        FloatingLyricsService.setFloatWidthDp(MusicPlayerActivity.this, vals[which]);
+                        Toast.makeText(MusicPlayerActivity.this, "浮窗长度已设为：" + labels[which], Toast.LENGTH_SHORT).show();
+                        dialog.dismiss();
+                    }
+                })
+                .show();
     }
 
     private void updateFloatingBtnState() {

@@ -8,10 +8,10 @@
     "changelog": "NASFun 服务端 v1.5.14：\n1. 新增全链路 VAAPI 硬件解码+编码零拷贝（-hwaccel vaapi -hwaccel_output_format vaapi），10GB+ 大体积 4K/1080P 视频转码速度提升 3-5 倍，支持客户端按需开关。"
   },
   "android": {
-    "versionCode": 25,
-    "versionName": "1.5.15",
-    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.15/NASFun_v1.5.15.apk",
-    "changelog": "NASFun 客户端 v1.5.15（兼容 Android 4.4+）：\n1. 音乐悬浮歌词/迷你浮窗新增可选「👻 穿透模式」（FLAG_NOT_TOUCHABLE）：开启后浮窗不再拦截触摸与点击，操作直接透传到下层导航/其他应用，同时半透明化提示。\n2. 可直接在浮窗顶栏点击 👻 开启穿透，或在音乐播放器「悬浮歌词」按钮菜单中随时开关穿透或关闭浮窗。",
+    "versionCode": 26,
+    "versionName": "1.5.16",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.16/NASFun_v1.5.16.apk",
+    "changelog": "NASFun 客户端 v1.5.16（兼容 Android 4.4+）：\n1. 音乐播放器新增「🔤 字号」设置（13sp/15sp/18sp/22sp/26sp），实时同步调整播放器内歌词与悬浮歌词窗字体大小。\n2. 悬浮歌词窗支持自定义浮窗长度（260dp / 320dp / 420dp / 540dp / 700dp / 90%屏幕宽自适应），配合最多 2 行显示，完整展现长歌词不截断。",
     "forceUpdate": false
   }
 }
