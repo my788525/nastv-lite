@@ -356,7 +356,7 @@ public class PlayerActivity extends AppCompatActivity {
                         customPlayLink = playLink;
                         // 记录切换前的播放位置（秒）
                         final long seekPosMs = player != null ? Math.max(0, player.getCurrentPosition()) : 0;
-                        String fullUrl = baseUrl + playLink;
+                        String fullUrl = appendHlsParams(baseUrl + playLink);
                         Log.d(TAG, "画质切换新链接: " + fullUrl + " res=" + res + " bitrate=" + bps + " seek=" + seekPosMs);
                         if (player != null) {
                             savedPlaybackUrl = fullUrl;
@@ -936,6 +936,16 @@ public class PlayerActivity extends AppCompatActivity {
         }
     };
 
+    private String appendHlsParams(String url) {
+        if (url == null || !url.contains("/v/api/v1/hls/")) return url;
+        SharedPreferences sp = getSharedPreferences("fntv_prefs", MODE_PRIVATE);
+        String codec = sp.getString("pref_video_codec", "h264");
+        String container = sp.getString("pref_hls_container", "ts");
+        int seg = sp.getInt("pref_hls_seg_sec", 2);
+        String sep = url.contains("?") ? "&" : "?";
+        return url + sep + "codec=" + codec + "&container=" + container + "&seg=" + seg;
+    }
+
     private com.google.android.exoplayer2.LoadControl buildLoadControl() {
         String prof = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_buffer_profile", "balanced");
         int minMs = 25000, maxMs = 90000, playMs = 1500, rebufMs = 2500;
@@ -962,7 +972,10 @@ public class PlayerActivity extends AppCompatActivity {
             playUrl = "auto".equals(defQ)
                     ? (baseUrl + "/v/api/v1/hls/" + mediaGuid + "/auto/master.m3u8")
                     : (baseUrl + "/v/api/v1/hls/" + mediaGuid + "/" + defQ + "/index.m3u8");
+            playUrl = appendHlsParams(playUrl);
             isHlsStream = true;
+        } else if (isHlsStream) {
+            playUrl = appendHlsParams(playUrl);
         }
         OkHttpExoDataSource.setChunkedMode(cfg.chunkedModeSize);
         useHls = isHlsStream;

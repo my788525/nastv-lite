@@ -1,17 +1,17 @@
 {
   "server": {
-    "versionCode": 21,
-    "versionName": "1.5.12",
-    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.12/nastv-server-linux-amd64",
-    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.12/nastv-server-windows-amd64.exe",
-    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.12/nasfun-x86_64-v1.5.12.fpk",
-    "changelog": "NASFun 服务端 v1.5.12：\n1. 修复 /v/api/v1/stream 与清晰度切换接口，支持智能自适应 ABR Master Playlist（auto/master.m3u8），根据客户端实时网速在 720P/480P/360P 间无缝切换。\n2. 针对 300KB/s 移动弱网优化转码码率（720P 1.6M / 480P 900K / 360P 500K + zerolatency + 96K 音频），彻底消除卡顿缓冲。"
+    "versionCode": 22,
+    "versionName": "1.5.13",
+    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.13/nastv-server-linux-amd64",
+    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.13/nastv-server-windows-amd64.exe",
+    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.13/nasfun-x86_64-v1.5.13.fpk",
+    "changelog": "NASFun 服务端 v1.5.13：\n1. 新增 HTTP Gzip 全量文本压缩中间件（JSON/M3U8/弹幕/字幕体积减少 70%-85%，可在配置关闭）。\n2. 新增转码编码切换（H.264 / HEVC H.265 省流40%）、HLS 切片封装切换（MPEG-TS / fMP4 低封装开销）与切片时长切换（2s/4s/6s）。"
   },
   "android": {
-    "versionCode": 22,
-    "versionName": "1.5.12",
-    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.12/NASFun_v1.5.12.apk",
-    "changelog": "NASFun 客户端 v1.5.12（兼容 Android 4.4+）：\n1. 修复播放器清晰度按钮被隐藏及切换无画质的问题，随时可切换「智能自适应 ABR / 720P 省流 / 480P 流畅 / 360P 极速 / 原画」。\n2. 优化弱网缓冲策略（按时间优先预缓冲 25-90 秒），配合服务端 ABR 自适应码率在 300KB/s 移动网络下流畅不卡顿。",
+    "versionCode": 23,
+    "versionName": "1.5.13",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.13/NASFun_v1.5.13.apk",
+    "changelog": "NASFun 客户端 v1.5.13（兼容 Android 4.4+）：\n1. 设置页「网络与弱网传输」新增 4 项可独立切换的测试开关：转码视频编码（H.264 / HEVC 省流40%）、HLS 切片封装（TS / fMP4）、HLS 切片时长（2s/4s/6s）、接口 Gzip 压缩，方便针对不同网络环境灵活调优。",
     "forceUpdate": false
   }
 }

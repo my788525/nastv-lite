@@ -906,6 +906,126 @@ DPAD 遥控器友好
                                 android:textSize="14sp" />
                         </RelativeLayout>
 
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 12. 视频转码编码格式 (H.264 / HEVC H.265) -->
+                        <RelativeLayout
+                            android:id="@+id/rlVideoCodecSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="转码视频编码"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvVideoCodecValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="H.264 (兼容)"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 13. HLS 切片封装 (TS / fMP4) -->
+                        <RelativeLayout
+                            android:id="@+id/rlHlsContainerSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="HLS 切片封装"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvHlsContainerValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="MPEG-TS (兼容)"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 14. HLS 切片时长 (2s / 4s / 6s) -->
+                        <RelativeLayout
+                            android:id="@+id/rlHlsSegSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="HLS 切片时长"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvHlsSegValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="2 秒 (极速起播)"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
+                        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+
+                        <!-- 15. HTTP 接口文本 Gzip 压缩 -->
+                        <RelativeLayout
+                            android:id="@+id/rlHttpGzipSetting"
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:paddingLeft="16dp"
+                            android:paddingRight="16dp"
+                            android:background="@drawable/bg_input"
+                            android:focusable="true"
+                            android:clickable="true">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_centerVertical="true"
+                                android:text="接口 Gzip 压缩"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp" />
+                            <TextView
+                                android:id="@+id/tvHttpGzipValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentRight="true"
+                                android:layout_centerVertical="true"
+                                android:text="已开启 (省75%流量)"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp" />
+                        </RelativeLayout>
+
                     </LinearLayout>
 
                     <!-- 关于 -->

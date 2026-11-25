@@ -221,7 +221,13 @@ func (t *Transcoder) EnsureThumbnail(item *MediaItem, enabled bool) string {
 	return ""
 }
 
-func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSettings) (string, error) {
+type HLSOptions struct {
+	Codec      string // "", "h264", "hevc"
+	Container  string // "", "ts", "fmp4"
+	SegmentSec int    // 0 (use cfg), 2, 4, 6
+}
+
+func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSettings, opts HLSOptions) (string, error) {
 	if t.ffmpegPath == "" {
 		return "", fmt.Errorf("ffmpeg 未安装")
 	}
@@ -229,16 +235,37 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 	if prof == nil || prof.Key == "original" {
 		return "", fmt.Errorf("invalid transcode quality")
 	}
-	segSec := cfg.HLSSegmentSec
+	segSec := opts.SegmentSec
+	if segSec <= 0 {
+		segSec = cfg.HLSSegmentSec
+	}
 	if segSec <= 0 {
 		segSec = 2
 	}
+	codec := opts.Codec
+	if codec == "" {
+		codec = cfg.TranscodeCodec
+	}
+	if codec != "hevc" {
+		codec = "h264"
+	}
+	container := opts.Container
+	if container == "" {
+		container = cfg.HLSContainer
+	}
+	if codec == "hevc" && container == "" {
+		container = "fmp4"
+	}
+	if container != "fmp4" {
+		container = "ts"
+	}
+
 	gop := segSec * 24
 	preset := cfg.TranscodePreset
 	if preset == "" {
 		preset = "veryfast"
 	}
-	sessKey := item.Guid + "_" + qualityKey
+	sessKey := fmt.Sprintf("%s_%s_%s_%s_%ds", item.Guid, qualityKey, codec, container, segSec)
 
 	t.mu.Lock()
 	if sess, ok := t.sessions[sessKey]; ok {
@@ -255,7 +282,17 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 	}
 
 	m3u8Path := filepath.Join(sessDir, "index.m3u8")
-	segPattern := filepath.Join(sessDir, "seg_%05d.ts")
+	segExt := "ts"
+	if container == "fmp4" {
+		segExt = "m4s"
+	}
+	segPattern := filepath.Join(sessDir, "seg_%05d."+segExt)
+
+	targetBitrate := prof.Bitrate
+	if !prof.AudioOnly && codec == "hevc" && targetBitrate > 0 {
+		// HEVC 同画质下码率可降至 H.264 的 65%
+		targetBitrate = targetBitrate * 65 / 100
+	}
 
 	var args []string
 	if prof.AudioOnly {
@@ -268,30 +305,41 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 			"-vn", "-c:a", "aac", "-b:a", fmt.Sprintf("%dk", kbps), "-ac", "2",
 			"-f", "hls", "-hls_time", "2", "-hls_list_size", "0",
 			"-hls_playlist_type", "event", "-hls_flags", "independent_segments",
-			"-hls_segment_filename", segPattern, m3u8Path,
+			"-hls_segment_filename", filepath.Join(sessDir, "seg_%05d.ts"), m3u8Path,
 		}
 	} else if t.hasVAAPI && cfg.EnableVAAPI {
-		// Intel/AMD VAAPI hardware transcode with strict VBV bitrate cap & independent HLS segments
 		audKbps := "96k"
 		if prof.Height >= 1080 {
 			audKbps = "128k"
+		}
+		vEncoder := "h264_vaapi"
+		if codec == "hevc" {
+			vEncoder = "hevc_vaapi"
 		}
 		scaleFilter := fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", prof.Height)
 		args = []string{
 			"-y", "-vaapi_device", "/dev/dri/renderD128",
 			"-i", item.FilePath,
 			"-vf", scaleFilter,
-			"-c:v", "h264_vaapi", "-b:v", fmt.Sprintf("%d", prof.Bitrate),
-			"-maxrate", fmt.Sprintf("%d", prof.Bitrate*115/100),
-			"-bufsize", fmt.Sprintf("%d", prof.Bitrate*2),
+			"-c:v", vEncoder,
+		}
+		if codec == "hevc" {
+			args = append(args, "-tag:v", "hvc1")
+		}
+		args = append(args,
+			"-b:v", fmt.Sprintf("%d", targetBitrate),
+			"-maxrate", fmt.Sprintf("%d", targetBitrate*115/100),
+			"-bufsize", fmt.Sprintf("%d", targetBitrate*2),
 			"-g", strconv.Itoa(gop), "-keyint_min", strconv.Itoa(gop), "-sc_threshold", "0",
 			"-c:a", "aac", "-b:a", audKbps, "-ac", "2",
 			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
 			"-hls_playlist_type", "event", "-hls_flags", "independent_segments",
-			"-hls_segment_filename", segPattern, m3u8Path,
+		)
+		if container == "fmp4" {
+			args = append(args, "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4")
 		}
+		args = append(args, "-hls_segment_filename", segPattern, m3u8Path)
 	} else {
-		// Software fallback libx264 with zerolatency, strict VBV bitrate cap & independent HLS segments
 		audKbps := "96k"
 		if prof.Height >= 1080 {
 			audKbps = "128k"
@@ -300,16 +348,25 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 		args = []string{
 			"-y", "-threads", "0", "-i", item.FilePath,
 			"-vf", scaleFilter,
-			"-c:v", "libx264", "-preset", preset, "-tune", "zerolatency",
-			"-b:v", fmt.Sprintf("%d", prof.Bitrate),
-			"-maxrate", fmt.Sprintf("%d", prof.Bitrate*115/100),
-			"-bufsize", fmt.Sprintf("%d", prof.Bitrate*2),
+		}
+		if codec == "hevc" {
+			args = append(args, "-c:v", "libx265", "-preset", preset, "-tag:v", "hvc1")
+		} else {
+			args = append(args, "-c:v", "libx264", "-preset", preset, "-tune", "zerolatency")
+		}
+		args = append(args,
+			"-b:v", fmt.Sprintf("%d", targetBitrate),
+			"-maxrate", fmt.Sprintf("%d", targetBitrate*115/100),
+			"-bufsize", fmt.Sprintf("%d", targetBitrate*2),
 			"-g", strconv.Itoa(gop), "-keyint_min", strconv.Itoa(gop), "-sc_threshold", "0",
 			"-c:a", "aac", "-b:a", audKbps, "-ac", "2",
 			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
 			"-hls_playlist_type", "event", "-hls_flags", "independent_segments",
-			"-hls_segment_filename", segPattern, m3u8Path,
+		)
+		if container == "fmp4" {
+			args = append(args, "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4")
 		}
+		args = append(args, "-hls_segment_filename", segPattern, m3u8Path)
 	}
 
 	cmd := exec.Command(t.ffmpegPath, args...)

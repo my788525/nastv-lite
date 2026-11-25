@@ -101,10 +101,12 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
 
     private RelativeLayout rlPlayModeSetting, rlScreenOffSetting, rlAutoResumeSetting, rlPinyinSearchSetting,
             rlMenuPanelSetting, rlDpadAccelSetting, rlSleepTimerSetting, rlVocalBoostSetting,
-            rlDefaultQualitySetting, rlBufferProfileSetting, rlWeakNetRetrySetting;
+            rlDefaultQualitySetting, rlBufferProfileSetting, rlWeakNetRetrySetting,
+            rlVideoCodecSetting, rlHlsContainerSetting, rlHlsSegSetting, rlHttpGzipSetting;
     private TextView tvPlayModeValue, tvScreenOffValue, tvAutoResumeValue, tvPinyinSearchValue,
             tvMenuPanelValue, tvDpadAccelValue, tvSleepTimerValue, tvVocalBoostValue,
-            tvDefaultQualityValue, tvBufferProfileValue, tvWeakNetRetryValue;
+            tvDefaultQualityValue, tvBufferProfileValue, tvWeakNetRetryValue,
+            tvVideoCodecValue, tvHlsContainerValue, tvHlsSegValue, tvHttpGzipValue;
     private boolean hasAutoResumedOnStartup = false;
     private final Map<String, String> libModeOverrides = new HashMap<>();
 
@@ -339,6 +341,15 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         tvBufferProfileValue = findViewById(R.id.tvBufferProfileValue);
         rlWeakNetRetrySetting = findViewById(R.id.rlWeakNetRetrySetting);
         tvWeakNetRetryValue = findViewById(R.id.tvWeakNetRetryValue);
+        rlVideoCodecSetting = findViewById(R.id.rlVideoCodecSetting);
+        tvVideoCodecValue = findViewById(R.id.tvVideoCodecValue);
+        rlHlsContainerSetting = findViewById(R.id.rlHlsContainerSetting);
+        tvHlsContainerValue = findViewById(R.id.tvHlsContainerValue);
+        rlHlsSegSetting = findViewById(R.id.rlHlsSegSetting);
+        tvHlsSegValue = findViewById(R.id.tvHlsSegValue);
+        rlHttpGzipSetting = findViewById(R.id.rlHttpGzipSetting);
+        tvHttpGzipValue = findViewById(R.id.tvHttpGzipValue);
+        com.fntv.app.api.AuthInterceptor.enableGzip = prefs.getBoolean("pref_http_gzip", true);
 
         TextView tvVersion = findViewById(R.id.tvVersionName);
         try {
@@ -3821,6 +3832,71 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
                 prefs.edit().putBoolean("pref_weak_net_retry", next).apply();
                 if (tvWeakNetRetryValue != null) {
                     tvWeakNetRetryValue.setText(next ? "已开启 (断线重连+原画降级)" : "已关闭");
+                }
+            });
+        }
+
+        // 12. 转码视频编码 (H.264 / HEVC H.265)
+        String curCodec = prefs.getString("pref_video_codec", "h264");
+        if (tvVideoCodecValue != null) {
+            tvVideoCodecValue.setText("hevc".equals(curCodec) ? "HEVC/H.265 (省流40%)" : "H.264 (兼容优先)");
+        }
+        if (rlVideoCodecSetting != null) {
+            rlVideoCodecSetting.setOnClickListener(v -> {
+                String c = prefs.getString("pref_video_codec", "h264");
+                String next = "hevc".equals(c) ? "h264" : "hevc";
+                prefs.edit().putString("pref_video_codec", next).apply();
+                if (tvVideoCodecValue != null) {
+                    tvVideoCodecValue.setText("hevc".equals(next) ? "HEVC/H.265 (省流40%)" : "H.264 (兼容优先)");
+                }
+            });
+        }
+
+        // 13. HLS 切片封装 (TS / fMP4)
+        String curCont = prefs.getString("pref_hls_container", "ts");
+        if (tvHlsContainerValue != null) {
+            tvHlsContainerValue.setText("fmp4".equals(curCont) ? "fMP4 (低封装开销)" : "MPEG-TS (经典兼容)");
+        }
+        if (rlHlsContainerSetting != null) {
+            rlHlsContainerSetting.setOnClickListener(v -> {
+                String c = prefs.getString("pref_hls_container", "ts");
+                String next = "fmp4".equals(c) ? "ts" : "fmp4";
+                prefs.edit().putString("pref_hls_container", next).apply();
+                if (tvHlsContainerValue != null) {
+                    tvHlsContainerValue.setText("fmp4".equals(next) ? "fMP4 (低封装开销)" : "MPEG-TS (经典兼容)");
+                }
+            });
+        }
+
+        // 14. HLS 切片时长 (2s / 4s / 6s)
+        int curSeg = prefs.getInt("pref_hls_seg_sec", 2);
+        if (tvHlsSegValue != null) {
+            tvHlsSegValue.setText(curSeg == 4 ? "4 秒 (弱网稳流推荐)" : curSeg == 6 ? "6 秒 (超低请求数)" : "2 秒 (极速起播)");
+        }
+        if (rlHlsSegSetting != null) {
+            rlHlsSegSetting.setOnClickListener(v -> {
+                int s = prefs.getInt("pref_hls_seg_sec", 2);
+                int next = (s == 2) ? 4 : (s == 4 ? 6 : 2);
+                prefs.edit().putInt("pref_hls_seg_sec", next).apply();
+                if (tvHlsSegValue != null) {
+                    tvHlsSegValue.setText(next == 4 ? "4 秒 (弱网稳流推荐)" : next == 6 ? "6 秒 (超低请求数)" : "2 秒 (极速起播)");
+                }
+            });
+        }
+
+        // 15. 接口 Gzip 压缩
+        boolean curGzip = prefs.getBoolean("pref_http_gzip", true);
+        com.fntv.app.api.AuthInterceptor.enableGzip = curGzip;
+        if (tvHttpGzipValue != null) {
+            tvHttpGzipValue.setText(curGzip ? "已开启 (省75%流量)" : "已关闭 (纯文本对照)");
+        }
+        if (rlHttpGzipSetting != null) {
+            rlHttpGzipSetting.setOnClickListener(v -> {
+                boolean next = !prefs.getBoolean("pref_http_gzip", true);
+                prefs.edit().putBoolean("pref_http_gzip", next).apply();
+                com.fntv.app.api.AuthInterceptor.enableGzip = next;
+                if (tvHttpGzipValue != null) {
+                    tvHttpGzipValue.setText(next ? "已开启 (省75%流量)" : "已关闭 (纯文本对照)");
                 }
             });
         }

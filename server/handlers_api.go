@@ -507,23 +507,47 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 自适应多码率 (ABR) Master Playlist：让客户端根据实时网速自动在 720P / 480P / 360P 间无缝切换
+	codecQ := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("codec")))
+	containerQ := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("container")))
+	segQ, _ := strconv.Atoi(r.URL.Query().Get("seg"))
 	if quality == "auto" && (file == "master.m3u8" || file == "index.m3u8") {
-		tokQ := ""
+		var qs []string
 		if t := r.URL.Query().Get("token"); t != "" {
-			tokQ = "?token=" + t
+			qs = append(qs, "token="+t)
+		}
+		if codecQ != "" {
+			qs = append(qs, "codec="+codecQ)
+		}
+		if containerQ != "" {
+			qs = append(qs, "container="+containerQ)
+		}
+		if segQ > 0 {
+			qs = append(qs, fmt.Sprintf("seg=%d", segQ))
+		}
+		suffix := ""
+		if len(qs) > 0 {
+			suffix = "?" + strings.Join(qs, "&")
+		}
+		bw720, bw480, bw360 := 1750000, 1020000, 580000
+		if codecQ == "hevc" {
+			bw720, bw480, bw360 = 1150000, 680000, 400000
 		}
 		master := fmt.Sprintf(
 			"#EXTM3U\n#EXT-X-VERSION:3\n"+
-				"#EXT-X-STREAM-INF:BANDWIDTH=1750000,RESOLUTION=1280x720,NAME=\"720P\"\n/v/api/v1/hls/%s/720p/index.m3u8%s\n"+
-				"#EXT-X-STREAM-INF:BANDWIDTH=1020000,RESOLUTION=854x480,NAME=\"480P\"\n/v/api/v1/hls/%s/480p/index.m3u8%s\n"+
-				"#EXT-X-STREAM-INF:BANDWIDTH=580000,RESOLUTION=640x360,NAME=\"360P\"\n/v/api/v1/hls/%s/360p/index.m3u8%s\n",
-			guid, tokQ, guid, tokQ, guid, tokQ)
+				"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=1280x720,NAME=\"720P\"\n/v/api/v1/hls/%s/720p/index.m3u8%s\n"+
+				"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=854x480,NAME=\"480P\"\n/v/api/v1/hls/%s/480p/index.m3u8%s\n"+
+				"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=640x360,NAME=\"360P\"\n/v/api/v1/hls/%s/360p/index.m3u8%s\n",
+			bw720, guid, suffix, bw480, guid, suffix, bw360, guid, suffix)
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write([]byte(master))
 		return
 	}
-	sessDir, err := app.transcoder.EnsureHLS(it, quality, app.store.GetSettings())
+	sessDir, err := app.transcoder.EnsureHLS(it, quality, app.store.GetSettings(), HLSOptions{
+		Codec:      codecQ,
+		Container:  containerQ,
+		SegmentSec: segQ,
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -533,6 +557,10 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	} else if strings.HasSuffix(file, ".ts") {
 		w.Header().Set("Content-Type", "video/mp2t")
+	} else if strings.HasSuffix(file, ".m4s") {
+		w.Header().Set("Content-Type", "video/iso.segment")
+	} else if strings.HasSuffix(file, ".mp4") {
+		w.Header().Set("Content-Type", "video/mp4")
 	}
 	http.ServeFile(w, r, target)
 }

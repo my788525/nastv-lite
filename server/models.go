@@ -22,7 +22,10 @@ type ServerSettings struct {
 	ServerName       string `json:"server_name"`
 	EnableVAAPI      bool   `json:"enable_vaapi"`
 	TranscodePreset  string `json:"transcode_preset"`   // ultrafast, veryfast, fast, medium
+	TranscodeCodec   string `json:"transcode_codec"`    // h264, hevc
+	HLSContainer     string `json:"hls_container"`      // ts, fmp4
 	HLSSegmentSec    int    `json:"hls_segment_sec"`    // 2, 4, 6
+	DisableGzip      bool   `json:"disable_gzip"`       // false=enable HTTP gzip for JSON/M3U8/subtitles
 	AutoScanHours    int    `json:"auto_scan_hours"`    // 0=off, 1, 6, 24
 	EnableThumbnails bool   `json:"enable_thumbnails"`  // auto ffmpeg frame thumbs
 	EnableScraper    bool   `json:"enable_scraper"`     // auto public metadata scraper for movie_tv libs

@@ -11,6 +11,7 @@ import java.nio.charset.Charset;
  * 核心拦截器：注入签名
  */
 public class AuthInterceptor implements Interceptor {
+    public static volatile boolean enableGzip = true;
     private String token;
     private String referer;
 
@@ -51,6 +52,10 @@ public class AuthInterceptor implements Interceptor {
                 .header("Cookie", "mode=relay")
                 .header("x-trim-client", "web")
                 .header("x-trim-client-version", "608");
+
+        if (!enableGzip) {
+            requestBuilder.header("Accept-Encoding", "identity");
+        }
 
         if (token != null) {
             requestBuilder.header("Authorization", token);

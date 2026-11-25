@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	_ "embed"
 	"flag"
 	"log"
@@ -25,6 +26,65 @@ type App struct {
 	dataDir    string
 	store      *Store
 	transcoder *Transcoder
+}
+
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	gw          *gzip.Writer
+	wroteHeader bool
+	shouldGzip  bool
+}
+
+func (g *gzipResponseWriter) WriteHeader(code int) {
+	if g.wroteHeader {
+		return
+	}
+	g.wroteHeader = true
+	ct := strings.ToLower(g.Header().Get("Content-Type"))
+	isText := strings.Contains(ct, "application/json") ||
+		strings.Contains(ct, "mpegurl") ||
+		strings.HasPrefix(ct, "text/") ||
+		strings.Contains(ct, "javascript") ||
+		strings.Contains(ct, "xml")
+	if code == http.StatusOK && isText && g.Header().Get("Content-Encoding") == "" {
+		g.shouldGzip = true
+		g.Header().Del("Content-Length")
+		g.Header().Set("Content-Encoding", "gzip")
+		g.Header().Add("Vary", "Accept-Encoding")
+		g.gw = gzip.NewWriter(g.ResponseWriter)
+	}
+	g.ResponseWriter.WriteHeader(code)
+}
+
+func (g *gzipResponseWriter) Write(b []byte) (int, error) {
+	if !g.wroteHeader {
+		if g.Header().Get("Content-Type") == "" {
+			g.Header().Set("Content-Type", http.DetectContentType(b))
+		}
+		g.WriteHeader(http.StatusOK)
+	}
+	if g.shouldGzip && g.gw != nil {
+		return g.gw.Write(b)
+	}
+	return g.ResponseWriter.Write(b)
+}
+
+func (g *gzipResponseWriter) Close() {
+	if g.gw != nil {
+		_ = g.gw.Close()
+	}
+}
+
+func (a *App) gzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.store.GetSettings().DisableGzip || !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		grw := &gzipResponseWriter{ResponseWriter: w}
+		defer grw.Close()
+		next.ServeHTTP(grw, r)
+	})
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
@@ -172,7 +232,7 @@ func main() {
 
 	go app.prewarmUpdateMirror()
 
-	if err := http.Serve(ln, corsMiddleware(mux)); err != nil {
+	if err := http.Serve(ln, corsMiddleware(app.gzipMiddleware(mux))); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }
