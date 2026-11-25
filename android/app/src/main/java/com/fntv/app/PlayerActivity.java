@@ -393,11 +393,8 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                 });
         if (btnQuality != null) {
+            btnQuality.setVisibility(View.VISIBLE);
             btnQuality.setOnClickListener(v -> qualityHelper.showQualityDialog());
-            // 初始检查：如果右上角直链按钮已显示，隐藏画质按钮
-            if (btnCloudMode.getVisibility() == View.VISIBLE) {
-                btnQuality.setVisibility(View.GONE);
-            }
         }
         btnBack.setOnClickListener(v -> { restoreOrientation(); finish(); });
         btnBackFloat = findViewById(R.id.btnBackFloat);
@@ -499,8 +496,7 @@ public class PlayerActivity extends AppCompatActivity {
                         tvDanmuMatch.setLayoutParams(lp);
                     }
                 }
-                // 直链/STRM 按钮显示时，隐藏画质按钮
-                if (vis && btnQuality != null) btnQuality.setVisibility(View.GONE);
+                if (btnQuality != null) btnQuality.setVisibility(View.VISIBLE);
             }
             @Override public void runOnUiThread(Runnable r) { PlayerActivity.this.runOnUiThread(r); }
         }, btnCloudMode, getSharedPreferences("fntv_prefs", MODE_PRIVATE));
@@ -942,14 +938,15 @@ public class PlayerActivity extends AppCompatActivity {
 
     private com.google.android.exoplayer2.LoadControl buildLoadControl() {
         String prof = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_buffer_profile", "balanced");
-        int minMs = 15000, maxMs = 60000, playMs = 1500, rebufMs = 2500;
+        int minMs = 25000, maxMs = 90000, playMs = 1500, rebufMs = 2500;
         if ("fast".equals(prof)) {
-            minMs = 10000; maxMs = 20000; playMs = 1000; rebufMs = 2000;
+            minMs = 12000; maxMs = 30000; playMs = 1000; rebufMs = 2000;
         } else if ("weak_net".equals(prof)) {
-            minMs = 25000; maxMs = 120000; playMs = 2000; rebufMs = 3500;
+            minMs = 40000; maxMs = 150000; playMs = 1500; rebufMs = 3000;
         }
         return new com.google.android.exoplayer2.DefaultLoadControl.Builder()
                 .setBufferDurationsMs(minMs, maxMs, playMs, rebufMs)
+                .setPrioritizeTimeOverSizeThresholds(true)
                 .build();
     }
 
@@ -962,7 +959,9 @@ public class PlayerActivity extends AppCompatActivity {
         boolean isHlsStream = cfg.hls;
         String defQ = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_default_quality", "original");
         if (qualityRetry == 0 && defQ != null && !"original".equals(defQ)) {
-            playUrl = baseUrl + "/v/api/v1/hls/" + mediaGuid + "/" + defQ + "/index.m3u8";
+            playUrl = "auto".equals(defQ)
+                    ? (baseUrl + "/v/api/v1/hls/" + mediaGuid + "/auto/master.m3u8")
+                    : (baseUrl + "/v/api/v1/hls/" + mediaGuid + "/" + defQ + "/index.m3u8");
             isHlsStream = true;
         }
         OkHttpExoDataSource.setChunkedMode(cfg.chunkedModeSize);

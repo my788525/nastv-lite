@@ -22,10 +22,11 @@ type QualityProfile struct {
 
 var QualityProfiles = []QualityProfile{
 	{Key: "original", Label: "原画 (Direct Play)", Height: 0, Bitrate: 0},
-	{Key: "1080p", Label: "1080P 高清 (8M)", Height: 1080, Bitrate: 8000000},
-	{Key: "720p", Label: "720P 标清 (4M)", Height: 720, Bitrate: 4000000},
-	{Key: "480p", Label: "480P 流畅 (1.5M)", Height: 480, Bitrate: 1500000},
-	{Key: "360p", Label: "360P 极速省流 (800K)", Height: 360, Bitrate: 800000},
+	{Key: "auto", Label: "智能自适应 (ABR 720P~360P)", Height: 720, Bitrate: 1600000},
+	{Key: "1080p", Label: "1080P 高清 (4M)", Height: 1080, Bitrate: 4000000},
+	{Key: "720p", Label: "720P 省流 (1.6M)", Height: 720, Bitrate: 1600000},
+	{Key: "480p", Label: "480P 流畅 (900K)", Height: 480, Bitrate: 900000},
+	{Key: "360p", Label: "360P 极速 (500K)", Height: 360, Bitrate: 500000},
 	{Key: "audio", Label: "纯音频极速 (128K)", Height: 0, Bitrate: 128000, AudioOnly: true},
 	{Key: "audio_96", Label: "音乐省流 (96K)", Height: 0, Bitrate: 96000, AudioOnly: true},
 	{Key: "audio_128", Label: "音乐标准 (128K)", Height: 0, Bitrate: 128000, AudioOnly: true},
@@ -270,30 +271,41 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 			"-hls_segment_filename", segPattern, m3u8Path,
 		}
 	} else if t.hasVAAPI && cfg.EnableVAAPI {
-		// Intel/AMD VAAPI hardware transcode with strict GOP & independent HLS segments
+		// Intel/AMD VAAPI hardware transcode with strict VBV bitrate cap & independent HLS segments
+		audKbps := "96k"
+		if prof.Height >= 1080 {
+			audKbps = "128k"
+		}
 		scaleFilter := fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", prof.Height)
 		args = []string{
 			"-y", "-vaapi_device", "/dev/dri/renderD128",
 			"-i", item.FilePath,
 			"-vf", scaleFilter,
 			"-c:v", "h264_vaapi", "-b:v", fmt.Sprintf("%d", prof.Bitrate),
+			"-maxrate", fmt.Sprintf("%d", prof.Bitrate*115/100),
+			"-bufsize", fmt.Sprintf("%d", prof.Bitrate*2),
 			"-g", strconv.Itoa(gop), "-keyint_min", strconv.Itoa(gop), "-sc_threshold", "0",
-			"-c:a", "aac", "-b:a", "192k", "-ac", "2",
+			"-c:a", "aac", "-b:a", audKbps, "-ac", "2",
 			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
 			"-hls_playlist_type", "event", "-hls_flags", "independent_segments",
 			"-hls_segment_filename", segPattern, m3u8Path,
 		}
 	} else {
-		// Software fallback libx264 with strict GOP & independent HLS segments
+		// Software fallback libx264 with zerolatency, strict VBV bitrate cap & independent HLS segments
+		audKbps := "96k"
+		if prof.Height >= 1080 {
+			audKbps = "128k"
+		}
 		scaleFilter := fmt.Sprintf("scale=-2:%d", prof.Height)
 		args = []string{
-			"-y", "-i", item.FilePath,
+			"-y", "-threads", "0", "-i", item.FilePath,
 			"-vf", scaleFilter,
-			"-c:v", "libx264", "-preset", preset, "-b:v", fmt.Sprintf("%d", prof.Bitrate),
-			"-maxrate", fmt.Sprintf("%d", prof.Bitrate*12/10),
+			"-c:v", "libx264", "-preset", preset, "-tune", "zerolatency",
+			"-b:v", fmt.Sprintf("%d", prof.Bitrate),
+			"-maxrate", fmt.Sprintf("%d", prof.Bitrate*115/100),
 			"-bufsize", fmt.Sprintf("%d", prof.Bitrate*2),
 			"-g", strconv.Itoa(gop), "-keyint_min", strconv.Itoa(gop), "-sc_threshold", "0",
-			"-c:a", "aac", "-b:a", "192k", "-ac", "2",
+			"-c:a", "aac", "-b:a", audKbps, "-ac", "2",
 			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
 			"-hls_playlist_type", "event", "-hls_flags", "independent_segments",
 			"-hls_segment_filename", segPattern, m3u8Path,

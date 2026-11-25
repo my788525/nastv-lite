@@ -382,6 +382,42 @@ func (app *App) handlePlayQuality(w http.ResponseWriter, r *http.Request) {
 	okResp(w, list)
 }
 
+func (app *App) handleStream(w http.ResponseWriter, r *http.Request) {
+	u := app.requireUser(w, r)
+	if u == nil {
+		return
+	}
+	var req struct {
+		MediaGuid string `json:"media_guid"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	it, ok := app.store.GetItem(req.MediaGuid)
+	if !ok || !u.CanAccessLibrary(it.LibID) {
+		errResp(w, 404, "媒体不存在或无权限")
+		return
+	}
+	var qualities []map[string]interface{}
+	if app.transcoder.ffmpegPath != "" {
+		qualities = []map[string]interface{}{
+			{"resolution": "auto", "bitrate": 1600000, "is_m3u8": true, "progressive": false},
+			{"resolution": "1080", "bitrate": 4000000, "is_m3u8": true, "progressive": false},
+			{"resolution": "720", "bitrate": 1600000, "is_m3u8": true, "progressive": false},
+			{"resolution": "480", "bitrate": 900000, "is_m3u8": true, "progressive": false},
+			{"resolution": "360", "bitrate": 500000, "is_m3u8": true, "progressive": false},
+		}
+	}
+	okResp(w, map[string]interface{}{
+		"qualities": qualities,
+		"video_stream": map[string]interface{}{
+			"guid":       it.Guid,
+			"codec_name": it.VCodec,
+			"width":      it.Width,
+			"height":     it.Height,
+			"bit_rate":   it.Bitrate,
+		},
+	})
+}
+
 func (app *App) handlePlayLink(w http.ResponseWriter, r *http.Request) {
 	u := app.requireUser(w, r)
 	if u == nil {
@@ -403,12 +439,19 @@ func (app *App) handlePlayLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resKey := strings.ToLower(strings.TrimSpace(req.Resolution))
+	if resKey == "1080" || resKey == "720" || resKey == "480" || resKey == "360" {
+		resKey += "p"
+	}
 	url := "/v/api/v1/media/range/" + it.Guid
-	if req.Resolution != "" && req.Resolution != "original" && FindQualityProfile(req.Resolution) != nil {
-		url = fmt.Sprintf("/v/api/v1/hls/%s/%s/index.m3u8", it.Guid, req.Resolution)
+	if resKey == "auto" {
+		url = fmt.Sprintf("/v/api/v1/hls/%s/auto/master.m3u8", it.Guid)
+	} else if resKey != "" && resKey != "original" && FindQualityProfile(resKey) != nil {
+		url = fmt.Sprintf("/v/api/v1/hls/%s/%s/index.m3u8", it.Guid, resKey)
 	}
 	okResp(w, map[string]interface{}{
 		"url":        url,
+		"play_link":  url,
 		"media_guid": it.Guid,
 	})
 }
@@ -461,6 +504,23 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 	it, ok := app.store.GetItem(guid)
 	if !ok || !u.CanAccessLibrary(it.LibID) {
 		http.NotFound(w, r)
+		return
+	}
+	// 自适应多码率 (ABR) Master Playlist：让客户端根据实时网速自动在 720P / 480P / 360P 间无缝切换
+	if quality == "auto" && (file == "master.m3u8" || file == "index.m3u8") {
+		tokQ := ""
+		if t := r.URL.Query().Get("token"); t != "" {
+			tokQ = "?token=" + t
+		}
+		master := fmt.Sprintf(
+			"#EXTM3U\n#EXT-X-VERSION:3\n"+
+				"#EXT-X-STREAM-INF:BANDWIDTH=1750000,RESOLUTION=1280x720,NAME=\"720P\"\n/v/api/v1/hls/%s/720p/index.m3u8%s\n"+
+				"#EXT-X-STREAM-INF:BANDWIDTH=1020000,RESOLUTION=854x480,NAME=\"480P\"\n/v/api/v1/hls/%s/480p/index.m3u8%s\n"+
+				"#EXT-X-STREAM-INF:BANDWIDTH=580000,RESOLUTION=640x360,NAME=\"360P\"\n/v/api/v1/hls/%s/360p/index.m3u8%s\n",
+			guid, tokQ, guid, tokQ, guid, tokQ)
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write([]byte(master))
 		return
 	}
 	sessDir, err := app.transcoder.EnsureHLS(it, quality, app.store.GetSettings())

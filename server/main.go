@@ -92,7 +92,7 @@ func main() {
 	mux.HandleFunc("/v/api/v1/play/info", app.handlePlayInfo)
 	mux.HandleFunc("/v/api/v1/play/quality", app.handlePlayQuality)
 	mux.HandleFunc("/v/api/v1/play/play", app.handlePlayLink)
-	mux.HandleFunc("/v/api/v1/stream", app.handlePlayLink)
+	mux.HandleFunc("/v/api/v1/stream", app.handleStream)
 	mux.HandleFunc("/v/api/v1/media/range/", app.handleMediaRange)
 	mux.HandleFunc("/v/api/v1/hls/", app.handleHLS)
 	mux.HandleFunc("/v/api/v1/img/", app.handleImg)

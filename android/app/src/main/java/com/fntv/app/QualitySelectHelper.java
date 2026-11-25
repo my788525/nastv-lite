@@ -136,24 +136,22 @@ public class QualitySelectHelper {
         Collections.sort(sortedRes, (a, b) -> resToNum(b) - resToNum(a));
 
         List<QualityOption> result = new ArrayList<>();
-        String highestRes = sortedRes.isEmpty() ? null : sortedRes.get(0);
-        result.add(new QualityOption("原画", "", 0, true, false, true));
+        result.add(new QualityOption("原画 (直连)", "", 0, true, false, true));
 
         for (String res : sortedRes) {
             List<StreamResponse.Quality> list = groups.get(res);
-            boolean isHighest = res.equals(highestRes);
-            if (isHighest && list.size() <= 1) continue;
             Collections.sort(list, (a, b) -> b.bitrate - a.bitrate);
-            StreamResponse.Quality pick = isHighest ? list.get(1) : list.get(0);
+            StreamResponse.Quality pick = list.get(0);
             result.add(new QualityOption(formatResLabel(res), res, pick.bitrate, pick.progressive, pick.isM3u8, false));
         }
         return result;
     }
 
-    /** 分辨率转可比对数字（4K→2160, 1080→1080, 720→720） */
+    /** 分辨率转可比对数字（auto→9999, 4K→2160, 1080→1080, 720→720） */
     private static int resToNum(String res) {
         if (res == null) return 0;
         String up = res.toUpperCase();
+        if ("AUTO".equals(up)) return 9999;
         if (up.contains("K")) {
             // "4K" / "4k" → 2160
             try {
@@ -164,11 +162,17 @@ public class QualitySelectHelper {
         try { return Integer.parseInt(res.replaceAll("[^0-9]", "")); } catch (Exception e) { return 0; }
     }
 
-    /** 分辨率显示标签（4K→"4K", 1080→"1080p"） */
+    /** 分辨率显示标签 */
     private static String formatResLabel(String res) {
         if (res == null) return "";
+        String low = res.toLowerCase();
+        if ("auto".equals(low)) return "⚡ 智能自适应 (ABR 720P~360P)";
+        if ("1080".equals(low) || "1080p".equals(low)) return "1080P 高清 (4M)";
+        if ("720".equals(low) || "720p".equals(low)) return "720P 省流 (1.6M)";
+        if ("480".equals(low) || "480p".equals(low)) return "480P 流畅 (900K)";
+        if ("360".equals(low) || "360p".equals(low)) return "360P 极速 (500K)";
         String up = res.toUpperCase();
-        if (up.contains("K")) return up; // "4K" → "4K"
+        if (up.contains("K")) return up;
         return res + "p";
     }
 
