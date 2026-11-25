@@ -66,15 +66,24 @@ public class UpdateManager {
                 org.json.JSONObject json = null;
                 String usedUrl = "";
                 String ts = new java.text.SimpleDateFormat("yyyyMMddHHmm", java.util.Locale.CHINA).format(new java.util.Date());
-                for (String url : UPDATE_URLS) {
+                String savedHost = activity.getSharedPreferences("fntv_prefs", android.content.Context.MODE_PRIVATE)
+                        .getString("host", "").replaceAll("/+$", "");
+                java.util.List<String> candidateUrls = new java.util.ArrayList<>();
+                if (!savedHost.isEmpty()) {
+                    candidateUrls.add(savedHost + "/v/api/v1/update/manifest");
+                }
+                for (String u : UPDATE_URLS) candidateUrls.add(u);
+
+                for (String url : candidateUrls) {
                     try {
                         if (!url.contains("raw.githubusercontent.com")) {
                             url = url + (url.contains("?") ? "&" : "?") + "t=" + ts;
                         }
+                        boolean isNasServer = !savedHost.isEmpty() && url.startsWith(savedHost);
                         Log.d(TAG, "尝试源: " + url);
                         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-                        c.setConnectTimeout(8000);
-                        c.setReadTimeout(8000);
+                        c.setConnectTimeout(isNasServer ? 5000 : 8000);
+                        c.setReadTimeout(isNasServer ? 8000 : 8000);
                         c.setInstanceFollowRedirects(true);
                         c.connect();
                         int code = c.getResponseCode();
@@ -118,9 +127,22 @@ public class UpdateManager {
                 if (appJson == null) appJson = json;
                 int remoteVersion = appJson.optInt("versionCode", 0);
                 final String versionName = appJson.optString("versionName", "");
-                final String apkUrl = appJson.optString("apkUrl", "");
+                final String fallbackApkUrl = appJson.optString("apkUrl", "");
                 final String changelog = appJson.optString("changelog", "暂无更新说明");
-                final boolean forceUpdate = json.optBoolean("forceUpdate", false);
+                final boolean forceUpdate = appJson.optBoolean("forceUpdate", json.optBoolean("forceUpdate", false));
+                final boolean isFromNas = !savedHost.isEmpty() && usedUrl.startsWith(savedHost);
+                String primaryApkUrl = fallbackApkUrl;
+                if (!savedHost.isEmpty() && isFromNas && !fallbackApkUrl.isEmpty()) {
+                    try {
+                        primaryApkUrl = savedHost + "/v/api/v1/update/apk?version="
+                                + java.net.URLEncoder.encode(versionName, "UTF-8")
+                                + "&url=" + java.net.URLEncoder.encode(fallbackApkUrl, "UTF-8");
+                    } catch (Exception ignored) {}
+                }
+                final String fPrimaryApkUrl = primaryApkUrl;
+                final String sourceHint = isFromNas
+                        ? (appJson.optBoolean("apkCached", false) ? "\n\n⚡ 更新源：NAS 媒体服务器本地高速缓存" : "\n\n⚡ 更新源：NAS 媒体服务器加速通道")
+                        : "\n\n🌐 更新源：GitHub 备用通道";
 
                 Log.d(TAG, "远程: v" + remoteVersion + " 本地: v" + currentVersionCode + " 来源: " + usedUrl);
 
@@ -136,7 +158,7 @@ public class UpdateManager {
                 final int fRemoteVersion = remoteVersion;
                 final String label = isTestInstall ? "测试安装（版本号不高于当前）" : "发现新版本 v" + versionName;
                 activity.runOnUiThread(() ->
-                        showUpdateDialog(label, changelog, forceUpdate, apkUrl, fRemoteVersion, isTestInstall));
+                        showUpdateDialog(label, changelog + sourceHint, forceUpdate, fPrimaryApkUrl, fallbackApkUrl, fRemoteVersion, isTestInstall));
 
             } catch (Exception e) {
                 Log.e(TAG, "检查更新异常", e);
@@ -151,15 +173,16 @@ public class UpdateManager {
     // ========== 更新弹窗 ==========
 
     private void showUpdateDialog(final String title, final String changelog,
-                                   final boolean forceUpdate, final String apkUrl,
-                                   final int remoteVersion, final boolean isTestInstall) {
+                                   final boolean forceUpdate, final String primaryApkUrl,
+                                   final String fallbackApkUrl, final int remoteVersion,
+                                   final boolean isTestInstall) {
         new android.app.AlertDialog.Builder(activity)
                 .setTitle(title)
                 .setMessage(changelog)
                 .setCancelable(!forceUpdate)
                 .setPositiveButton(isTestInstall ? "测试安装器" : "立即更新", (dialog, which) -> {
                     dialog.dismiss();
-                    downloadAndInstall(apkUrl, remoteVersion, isTestInstall);
+                    downloadAndInstall(primaryApkUrl, fallbackApkUrl, remoteVersion, isTestInstall);
                 })
                 .setNegativeButton(forceUpdate ? "退出应用" : "稍后再说", (dialog, which) -> {
                     if (forceUpdate) {
@@ -174,7 +197,8 @@ public class UpdateManager {
 
     // ========== 下载 ==========
 
-    private void downloadAndInstall(final String apkUrl, final int remoteVersion, final boolean isTestInstall) {
+    private void downloadAndInstall(final String primaryApkUrl, final String fallbackApkUrl,
+                                    final int remoteVersion, final boolean isTestInstall) {
         if (btnCheckUpdate != null) {
             btnCheckUpdate.setBackgroundResource(R.drawable.bg_btn_update_progress);
             if (btnCheckUpdate.getBackground() != null) {
@@ -184,116 +208,144 @@ public class UpdateManager {
             btnCheckUpdate.setEnabled(false);
         }
         new Thread(() -> {
-            try {
-                HttpURLConnection c = (HttpURLConnection) new URL(apkUrl).openConnection();
-                c.setConnectTimeout(15000);
-                c.setReadTimeout(30000);
-                c.setInstanceFollowRedirects(true);
-                c.connect();
-                int respCode = c.getResponseCode();
-                if (respCode != 200) {
+            String[] tryUrls = (fallbackApkUrl != null && !fallbackApkUrl.isEmpty() && !fallbackApkUrl.equals(primaryApkUrl))
+                    ? new String[]{primaryApkUrl, fallbackApkUrl}
+                    : new String[]{primaryApkUrl};
+
+            for (int uIdx = 0; uIdx < tryUrls.length; uIdx++) {
+                String apkUrl = tryUrls[uIdx];
+                boolean hasMoreFallback = (uIdx + 1 < tryUrls.length);
+                if (uIdx > 0) {
                     activity.runOnUiThread(() -> {
-                        Toast.makeText(activity, "下载失败，服务器返回 " + respCode, Toast.LENGTH_LONG).show();
-                        resetBtn();
+                        if (btnCheckUpdate != null) btnCheckUpdate.setText("切换 GitHub 备用源...");
                     });
-                    return;
                 }
+                try {
+                    HttpURLConnection c = (HttpURLConnection) new URL(apkUrl).openConnection();
+                    c.setConnectTimeout(15000);
+                    c.setReadTimeout(30000);
+                    c.setInstanceFollowRedirects(true);
+                    c.connect();
+                    int respCode = c.getResponseCode();
+                    if (respCode != 200) {
+                        if (hasMoreFallback) {
+                            Log.w(TAG, "主源下载失败 HTTP " + respCode + "，尝试备用源");
+                            continue;
+                        }
+                        activity.runOnUiThread(() -> {
+                            Toast.makeText(activity, "下载失败，服务器返回 " + respCode, Toast.LENGTH_LONG).show();
+                            resetBtn();
+                        });
+                        return;
+                    }
 
-                final long totalBytes = c.getContentLength();
-                File dir = new File(activity.getExternalFilesDir(null), "download");
-                if (!dir.exists()) dir.mkdirs();
-                final File apkFile = new File(dir, "FNTV_v" + remoteVersion + ".apk");
+                    final long totalBytes = c.getContentLength();
+                    File dir = new File(activity.getExternalFilesDir(null), "download");
+                    if (!dir.exists()) dir.mkdirs();
+                    final File apkFile = new File(dir, "FNTV_v" + remoteVersion + ".apk");
 
-                InputStream is = c.getInputStream();
-                FileOutputStream fos = new FileOutputStream(apkFile);
-                byte[] buf = new byte[8192];
-                int n;
-                long downloaded = 0;
-                int lastPct = -1;
-                long lastTime = 0;
-                while ((n = is.read(buf)) != -1) {
-                    fos.write(buf, 0, n);
-                    downloaded += n;
-                    long now = System.currentTimeMillis();
-                    if (totalBytes > 0) {
-                        int pct = (int) (downloaded * 100 / totalBytes);
-                        if (pct > 100) pct = 100;
-                        if (pct != lastPct && (now - lastTime >= 80 || pct == 100)) {
-                            lastPct = pct;
-                            lastTime = now;
-                            final int fPct = pct;
-                            final long fDl = downloaded;
-                            final long fTot = totalBytes;
-                            activity.runOnUiThread(() -> {
-                                if (btnCheckUpdate != null) {
-                                    if (btnCheckUpdate.getBackground() != null) {
-                                        btnCheckUpdate.getBackground().setLevel(fPct * 100);
+                    InputStream is = c.getInputStream();
+                    FileOutputStream fos = new FileOutputStream(apkFile);
+                    byte[] buf = new byte[8192];
+                    int n;
+                    long downloaded = 0;
+                    int lastPct = -1;
+                    long lastTime = 0;
+                    while ((n = is.read(buf)) != -1) {
+                        fos.write(buf, 0, n);
+                        downloaded += n;
+                        long now = System.currentTimeMillis();
+                        if (totalBytes > 0) {
+                            int pct = (int) (downloaded * 100 / totalBytes);
+                            if (pct > 100) pct = 100;
+                            if (pct != lastPct && (now - lastTime >= 80 || pct == 100)) {
+                                lastPct = pct;
+                                lastTime = now;
+                                final int fPct = pct;
+                                final long fDl = downloaded;
+                                final long fTot = totalBytes;
+                                activity.runOnUiThread(() -> {
+                                    if (btnCheckUpdate != null) {
+                                        if (btnCheckUpdate.getBackground() != null) {
+                                            btnCheckUpdate.getBackground().setLevel(fPct * 100);
+                                        }
+                                        String mbStr = String.format(java.util.Locale.CHINA, "%.1f/%.1f MB",
+                                                fDl / 1048576.0, fTot / 1048576.0);
+                                        btnCheckUpdate.setText((isTestInstall ? "测试下载 " : "下载中 ") + fPct + "% (" + mbStr + ")");
                                     }
-                                    String mbStr = String.format(java.util.Locale.CHINA, "%.1f/%.1f MB",
-                                            fDl / 1048576.0, fTot / 1048576.0);
-                                    btnCheckUpdate.setText((isTestInstall ? "测试下载 " : "下载中 ") + fPct + "% (" + mbStr + ")");
-                                }
-                            });
-                        }
-                    } else {
-                        if (now - lastTime >= 250) {
-                            lastTime = now;
-                            final long fDl = downloaded;
-                            activity.runOnUiThread(() -> {
-                                if (btnCheckUpdate != null) {
-                                    String mbStr = String.format(java.util.Locale.CHINA, "%.1f MB", fDl / 1048576.0);
-                                    btnCheckUpdate.setText((isTestInstall ? "测试下载 " : "下载中 ") + mbStr);
-                                }
-                            });
+                                });
+                            }
+                        } else {
+                            if (now - lastTime >= 250) {
+                                lastTime = now;
+                                final long fDl = downloaded;
+                                activity.runOnUiThread(() -> {
+                                    if (btnCheckUpdate != null) {
+                                        String mbStr = String.format(java.util.Locale.CHINA, "%.1f MB", fDl / 1048576.0);
+                                        btnCheckUpdate.setText((isTestInstall ? "测试下载 " : "下载中 ") + mbStr);
+                                    }
+                                });
+                            }
                         }
                     }
-                }
-                fos.close();
-                is.close();
+                    fos.close();
+                    is.close();
 
-                activity.runOnUiThread(() -> {
-                    if (btnCheckUpdate != null) {
-                        if (btnCheckUpdate.getBackground() != null) {
-                            btnCheckUpdate.getBackground().setLevel(10000);
+                    activity.runOnUiThread(() -> {
+                        if (btnCheckUpdate != null) {
+                            if (btnCheckUpdate.getBackground() != null) {
+                                btnCheckUpdate.getBackground().setLevel(10000);
+                            }
+                            btnCheckUpdate.setText("下载完成，校验中...");
                         }
-                        btnCheckUpdate.setText("下载完成，校验中...");
+                    });
+
+                    Log.d(TAG, "下载完成: " + apkFile.getAbsolutePath() + " (" + apkFile.length() + " bytes)");
+
+                    // 检查 APK 文件头
+                    java.io.RandomAccessFile raf = new java.io.RandomAccessFile(apkFile, "r");
+                    byte[] header = new byte[4];
+                    raf.read(header);
+                    raf.close();
+                    String headerStr = new String(header, "UTF-8");
+                    Log.d(TAG, "APK 文件头: " + headerStr + " (" + bytesToHex(header) + ")");
+                    if (!"PK".equals(headerStr.substring(0, 2))) {
+                        if (hasMoreFallback) {
+                            Log.w(TAG, "主源 APK 文件头异常，尝试备用源");
+                            continue;
+                        }
+                        activity.runOnUiThread(() -> {
+                            Toast.makeText(activity, "下载文件不是有效的 APK（文件头异常）", Toast.LENGTH_LONG).show();
+                            resetBtn();
+                        });
+                        return;
                     }
-                });
 
-                Log.d(TAG, "下载完成: " + apkFile.getAbsolutePath() + " (" + apkFile.length() + " bytes)");
+                    // 签名校验
+                    if (!verifyApkSignature(apkFile)) {
+                        if (hasMoreFallback) {
+                            Log.w(TAG, "主源 APK 签名校验失败，尝试备用源");
+                            continue;
+                        }
+                        activity.runOnUiThread(() -> {
+                            Toast.makeText(activity, "APK 签名校验失败，可能已被篡改", Toast.LENGTH_LONG).show();
+                            resetBtn();
+                        });
+                        return;
+                    }
 
-                // 检查 APK 文件头
-                java.io.RandomAccessFile raf = new java.io.RandomAccessFile(apkFile, "r");
-                byte[] header = new byte[4];
-                raf.read(header);
-                raf.close();
-                String headerStr = new String(header, "UTF-8");
-                Log.d(TAG, "APK 文件头: " + headerStr + " (" + bytesToHex(header) + ")");
-                if (!"PK".equals(headerStr.substring(0, 2))) {
-                    activity.runOnUiThread(() -> {
-                        Toast.makeText(activity, "下载文件不是有效的 APK（文件头异常）", Toast.LENGTH_LONG).show();
-                        resetBtn();
-                    });
+                    activity.runOnUiThread(() -> installApk(apkFile, isTestInstall));
                     return;
+
+                } catch (Exception e) {
+                    Log.e(TAG, "下载失败 (" + apkUrl + ")", e);
+                    if (!hasMoreFallback) {
+                        activity.runOnUiThread(() -> {
+                            Toast.makeText(activity, "下载失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                            resetBtn();
+                        });
+                    }
                 }
-
-                // 签名校验
-                if (!verifyApkSignature(apkFile)) {
-                    activity.runOnUiThread(() -> {
-                        Toast.makeText(activity, "APK 签名校验失败，可能已被篡改", Toast.LENGTH_LONG).show();
-                        resetBtn();
-                    });
-                    return;
-                }
-
-                activity.runOnUiThread(() -> installApk(apkFile, isTestInstall));
-
-            } catch (Exception e) {
-                Log.e(TAG, "下载失败", e);
-                activity.runOnUiThread(() -> {
-                    Toast.makeText(activity, "下载失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    resetBtn();
-                });
             }
         }).start();
     }

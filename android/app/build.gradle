@@ -17,8 +17,8 @@ android {
         applicationId "com.nastv.lite"
         minSdkVersion 19
         targetSdkVersion 32
-        versionCode 20
-        versionName "1.5.10"
+        versionCode 21
+        versionName "1.5.11"
         vectorDrawables.useSupportLibrary = true
         multiDexEnabled true
     }

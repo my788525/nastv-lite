@@ -104,6 +104,9 @@ func main() {
 	mux.HandleFunc("/v/api/v1/search/list", app.handleSearch)
 	mux.HandleFunc("/v/api/v1/files/list", app.handleFilesList)
 	mux.HandleFunc("/v/api/v1/files/download", app.handleFilesDownload)
+	mux.HandleFunc("/v/api/v1/update/manifest", app.handleUpdateManifest)
+	mux.HandleFunc("/v/api/v1/update/apk", app.handleUpdateAPK)
+	mux.HandleFunc("/update.json", app.handleUpdateManifest)
 
 	// Admin API (/api/admin/...)
 	mux.HandleFunc("/api/admin/status", app.handleAdminStatus)
@@ -166,6 +169,8 @@ func main() {
 			_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", "http://127.0.0.1:"+*port).Start()
 		}()
 	}
+
+	go app.prewarmUpdateMirror()
 
 	if err := http.Serve(ln, corsMiddleware(mux)); err != nil {
 		log.Fatalf("Server error: %v", err)
