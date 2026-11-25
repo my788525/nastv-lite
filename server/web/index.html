@@ -304,8 +304,15 @@
         <div class="card-title">1. 目标保存目录与音源接口配置</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div class="form-group">
-            <label>保存到的音乐媒体库目录</label>
-            <select id="mdlTargetDir"></select>
+            <label>保存到的音乐媒体库目录与子文件夹</label>
+            <select id="mdlTargetDir" onchange="loadMusicSubDirs()"></select>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <select id="mdlSubDir" style="flex:1">
+                <option value="">📁 放置在媒体库根目录</option>
+              </select>
+              <button class="sec" type="button" onclick="addNewMusicSubDir()">➕ 新建子文件夹</button>
+              <button class="sec" type="button" onclick="loadMusicSubDirs()" title="刷新子文件夹">🔄</button>
+            </div>
           </div>
           <div class="form-group">
             <label>自定义兼容音源接口 URL（如自建 NeteaseCloudMusicApi / Listen1 网关，留空使用公开源）</label>
@@ -981,7 +988,59 @@ async function initMusicDlTab() {
   if (setRes.data && setRes.data.music_source_api !== undefined) {
     document.getElementById('mdlSourceApi').value = setRes.data.music_source_api || '';
   }
+  await loadMusicSubDirs();
   loadMusicTasks();
+}
+
+async function loadMusicSubDirs() {
+  const val = document.getElementById('mdlTargetDir').value;
+  const subSel = document.getElementById('mdlSubDir');
+  if (!subSel) return;
+  const prev = subSel.value;
+  subSel.innerHTML = '<option value="">📁 放置在媒体库根目录</option>';
+  if (!val) return;
+  const [rootDir] = val.split('|');
+  try {
+    const r = await api('/api/admin/fs?path=' + encodeURIComponent(rootDir));
+    const dirs = r.data?.dirs || [];
+    dirs.forEach(d => {
+      if (!d.path || d.path === rootDir) return;
+      const opt = document.createElement('option');
+      opt.value = d.path;
+      opt.textContent = '📁 ' + d.name;
+      if (d.path === prev) opt.selected = true;
+      subSel.appendChild(opt);
+    });
+  } catch (e) {}
+}
+
+function addNewMusicSubDir() {
+  const val = document.getElementById('mdlTargetDir').value;
+  if (!val) { alert('请先选择音乐媒体库目录'); return; }
+  const [rootDir] = val.split('|');
+  const raw = prompt('请输入新子文件夹名称（例如：周深.合集 或 精选/新歌）：');
+  if (!raw) return;
+  const clean = raw.trim().replace(/^[/\\]+|[/\\]+$/g, '').replace(/\.\./g, '');
+  if (!clean) return;
+  const sep = rootDir.includes('\\') ? '\\' : '/';
+  const fullPath = rootDir.replace(/[/\\]+$/, '') + sep + clean.replace(/[/\\]+/g, sep);
+  const subSel = document.getElementById('mdlSubDir');
+  let found = Array.from(subSel.options).find(o => o.value === fullPath);
+  if (!found) {
+    found = document.createElement('option');
+    found.value = fullPath;
+    found.textContent = '📁 ' + clean + '（新建）';
+    subSel.appendChild(found);
+  }
+  subSel.value = fullPath;
+}
+
+function getMusicTargetSelection() {
+  const val = document.getElementById('mdlTargetDir').value;
+  if (!val) return null;
+  const [rootDir, libId] = val.split('|');
+  const subDir = document.getElementById('mdlSubDir')?.value || '';
+  return { targetDir: subDir || rootDir, libId };
 }
 
 async function saveMusicSourceApi() {
@@ -1103,12 +1162,11 @@ async function searchMusicDl() {
 async function downloadSearchMusic(idx) {
   const it = mdlSearchResults[idx];
   if (!it) return;
-  const val = document.getElementById('mdlTargetDir').value;
-  if (!val) { alert('请先在媒体库管理中添加至少一个音乐媒体库'); return; }
-  const [targetDir, libId] = val.split('|');
+  const target = getMusicTargetSelection();
+  if (!target) { alert('请先在媒体库管理中添加至少一个音乐媒体库'); return; }
   const r = await api('/api/admin/music/download', {
     method: 'POST',
-    body: { id: it.id, title: it.title, artist: it.artist, album: it.album, audio_url: it.audio_url, cover_url: it.cover_url, target_dir: targetDir, lib_id: libId }
+    body: { id: it.id, title: it.title, artist: it.artist, album: it.album, audio_url: it.audio_url, cover_url: it.cover_url, target_dir: target.targetDir, lib_id: target.libId }
   });
   if (r.code !== 0) { alert(r.msg); return; }
   loadMusicTasks();
@@ -1118,12 +1176,11 @@ async function downloadDirectMusic() {
   const title = document.getElementById('mdlDirectTitle').value.trim();
   const artist = document.getElementById('mdlDirectArtist').value.trim();
   const audio_url = document.getElementById('mdlDirectUrl').value.trim();
-  const val = document.getElementById('mdlTargetDir').value;
-  if (!title || !audio_url || !val) { alert('歌名、音频直链与保存目录不能为空'); return; }
-  const [targetDir, libId] = val.split('|');
+  const target = getMusicTargetSelection();
+  if (!title || !audio_url || !target) { alert('歌名、音频直链与保存目录不能为空'); return; }
   const r = await api('/api/admin/music/download', {
     method: 'POST',
-    body: { title, artist, audio_url, target_dir: targetDir, lib_id: libId }
+    body: { title, artist, audio_url, target_dir: target.targetDir, lib_id: target.libId }
   });
   if (r.code !== 0) { alert(r.msg); return; }
   loadMusicTasks();
