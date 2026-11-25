@@ -8,10 +8,10 @@
     "changelog": "NASFun 服务端 v1.5.2：\n1. 新建音乐库时自动为所有现有账户默认开通该音乐库访问权限。"
   },
   "android": {
-    "versionCode": 13,
-    "versionName": "1.5.4",
-    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.4/NASFun_v1.5.4.apk",
-    "changelog": "NASFun 客户端 v1.5.4（兼容 Android 4.4+）：\n1. 彻底修复播放约 2 秒后因 PlayerActivity.isHdrVideo 中 streamVColor 为空导致 NullPointerException 崩溃退出的问题。\n2. 修复从首页/媒体库点击音乐时误进入视频播放器的问题，现在所有音乐均直接进入专用的音乐播放器（支持同步歌词、后台播放与悬浮歌词）。",
+    "versionCode": 14,
+    "versionName": "1.5.5",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.5/NASFun_v1.5.5.apk",
+    "changelog": "NASFun 客户端 v1.5.5（兼容 Android 4.4+）：\n1. 修复音乐播放器打开后因服务异步启动未绑定监听及缺少错误回退导致的无法起播问题。\n2. 弱网视频播放优化：缩短起播与重缓冲阈值（1.5s 起播），原画缓冲超过 6.5 秒自动无感切换至 720P HLS 流畅播放。",
     "forceUpdate": false
   }
 }

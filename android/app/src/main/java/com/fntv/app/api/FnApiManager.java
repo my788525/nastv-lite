@@ -43,9 +43,9 @@ public class FnApiManager {
                     .hostnameVerifier(TRUST_ALL_HOSTS);
             if (streaming) {
                 // 视频流：弱网容错超时，避免隧道/断网死等卡死，配合播放器自动重连与降级
-                builder.connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                        .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-                        .writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                builder.connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+                        .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
                         .retryOnConnectionFailure(true)
                         .connectionPool(new okhttp3.ConnectionPool(4, 30, java.util.concurrent.TimeUnit.SECONDS));
             } else {

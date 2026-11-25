@@ -31,9 +31,12 @@ import com.fntv.app.util.LyricsParser;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.database.StandaloneDatabaseProvider;
+import com.google.android.exoplayer2.extractor.DefaultExtractorsFactory;
 import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
+import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
 import com.google.android.exoplayer2.upstream.cache.CacheDataSource;
@@ -113,6 +116,9 @@ public class MusicPlaybackService extends Service {
     private final AtomicInteger prefetchGeneration = new AtomicInteger(0);
     private volatile CacheWriter activeCacheWriter;
     private volatile int nextShuffleIndex = -1;
+    private volatile boolean fallbackDirectTried = false;
+    private DataSource.Factory activeDataSourceFactory;
+    private DataSource.Factory directDataSourceFactory;
     private final ConcurrentHashMap<String, AudioLyricsResponse> lyricsCache = new ConcurrentHashMap<>();
 
     private static List<PlayListItem> pendingQueue;
@@ -175,6 +181,7 @@ public class MusicPlaybackService extends Service {
                 return new OkHttpExoDataSource(FnApiManager.getInstance().getStreamClient());
             }
         };
+        directDataSourceFactory = upstreamFactory;
 
         DataSource.Factory dsFactory = upstreamFactory;
         try {
@@ -191,6 +198,7 @@ public class MusicPlaybackService extends Service {
         } catch (Exception e) {
             Log.w(TAG, "Init music disk cache failed, fallback to direct stream: " + e.getMessage());
         }
+        activeDataSourceFactory = dsFactory;
 
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(15_000, 90_000, 1_500, 3_000)
@@ -219,6 +227,30 @@ public class MusicPlaybackService extends Service {
                     playNext(true);
                 }
             }
+
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                Log.e(TAG, "Music player error: " + error.getMessage(), error);
+                PlayListItem cur = getCurrentItem();
+                if (!fallbackDirectTried && cur != null && directDataSourceFactory != null) {
+                    fallbackDirectTried = true;
+                    String directUrl = resolveBaseUrl() + "/v/api/v1/media/range/" + cur.guid;
+                    Log.w(TAG, "Fallback to direct audio stream: " + directUrl);
+                    player.setMediaSource(new ProgressiveMediaSource.Factory(
+                            directDataSourceFactory, new DefaultExtractorsFactory())
+                            .createMediaSource(MediaItem.fromUri(Uri.parse(directUrl))));
+                    player.prepare();
+                    player.play();
+                    return;
+                }
+                mainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        android.widget.Toast.makeText(MusicPlaybackService.this,
+                                "音频加载失败，请检查网络或切换音质", android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
         });
 
         mediaSession = new MediaSessionCompat(this, "NASTVMusicSession");
@@ -234,6 +266,7 @@ public class MusicPlaybackService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        startForeground(NOTIF_ID, buildNotification());
         if (intent != null && intent.getAction() != null) {
             String action = intent.getAction();
             if (ACTION_PLAY_QUEUE.equals(action)) {
@@ -283,8 +316,14 @@ public class MusicPlaybackService extends Service {
         currentArtist = item.artist != null ? item.artist : "";
         currentAlbum = item.album != null ? item.album : "";
         currentLyrics = new LyricsParser.Result(Collections.<LyricsParser.TimedLyric>emptyList(), Collections.<String>emptyList());
+        fallbackDirectTried = false;
 
-        player.setMediaItem(MediaItem.fromUri(Uri.parse(playUri)));
+        DataSource.Factory useFactory = (localFile != null && directDataSourceFactory != null)
+                ? directDataSourceFactory
+                : (activeDataSourceFactory != null ? activeDataSourceFactory : directDataSourceFactory);
+        player.setMediaSource(new ProgressiveMediaSource.Factory(
+                useFactory, new DefaultExtractorsFactory())
+                .createMediaSource(MediaItem.fromUri(Uri.parse(playUri))));
         player.prepare();
         player.play();
 
@@ -317,7 +356,8 @@ public class MusicPlaybackService extends Service {
     private String resolveBaseUrl() {
         String baseUrl = FnApiManager.getInstance().getBaseUrl();
         if (baseUrl == null || baseUrl.isEmpty()) {
-            String saved = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("server_url", "");
+            String saved = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("host", "");
+            if (saved.isEmpty()) saved = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("server_url", "");
             baseUrl = FnApiManager.normalizeHostUrl(saved);
         }
         return baseUrl;

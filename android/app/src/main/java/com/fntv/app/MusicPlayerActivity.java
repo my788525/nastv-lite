@@ -58,6 +58,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
     private TextView btnFloatLyrics;
 
     private boolean isDraggingSeek = false;
+    private boolean listenerAttached = false;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private final Runnable progressTask = new Runnable() {
         @Override
@@ -323,9 +324,11 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
     @Override
     protected void onResume() {
         super.onResume();
+        listenerAttached = false;
         MusicPlaybackService s = MusicPlaybackService.getInstance();
         if (s != null) {
             s.addListener(this);
+            listenerAttached = true;
             syncAllFromService(s);
         }
         updateFloatingBtnState();
@@ -338,6 +341,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         uiHandler.removeCallbacks(progressTask);
         MusicPlaybackService s = MusicPlaybackService.getInstance();
         if (s != null) s.removeListener(this);
+        listenerAttached = false;
     }
 
     private void syncAllFromService(MusicPlaybackService s) {
@@ -354,6 +358,11 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
     private void updateProgress() {
         MusicPlaybackService s = MusicPlaybackService.getInstance();
         if (s == null) return;
+        if (!listenerAttached) {
+            s.addListener(this);
+            listenerAttached = true;
+            syncAllFromService(s);
+        }
         long pos = s.getCurrentPosition();
         long dur = s.getDuration();
         if (dur > 0) {

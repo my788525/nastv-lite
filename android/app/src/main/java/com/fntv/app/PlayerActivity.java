@@ -657,6 +657,12 @@ public class PlayerActivity extends AppCompatActivity {
         player.addListener(new Player.Listener() {
             @Override public void onPlaybackStateChanged(int s) {
                 tvBuffering.setVisibility(s == Player.STATE_BUFFERING ? View.VISIBLE : View.GONE);
+                if (s == Player.STATE_BUFFERING && !useHls && mediaGuid != null && baseUrl != null) {
+                    handler.removeCallbacks(stallDowngradeR);
+                    handler.postDelayed(stallDowngradeR, 6500);
+                } else {
+                    handler.removeCallbacks(stallDowngradeR);
+                }
                 if (s == Player.STATE_READY) {
                     applyVocalBoost();
                     if (!seeked && seekTs > 0) {
@@ -913,13 +919,29 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     /** 开始播放（加载到 ExoPlayer） */
+    private final Runnable stallDowngradeR = () -> {
+        if (player != null && !useHls && mediaGuid != null && baseUrl != null
+                && player.getPlaybackState() == Player.STATE_BUFFERING
+                && getSharedPreferences("fntv_prefs", MODE_PRIVATE).getBoolean("pref_weak_net_retry", true)) {
+            long resumePos = Math.max(0, player.getCurrentPosition());
+            useHls = true;
+            savedPlaybackUrl = baseUrl + "/v/api/v1/hls/" + mediaGuid + "/720p/index.m3u8";
+            com.google.android.exoplayer2.upstream.DataSource.Factory f = () -> new OkHttpExoDataSource(apiManager.getStreamClient());
+            player.setMediaSource(new com.google.android.exoplayer2.source.hls.HlsMediaSource.Factory(f).createMediaSource(MediaItem.fromUri(savedPlaybackUrl)));
+            player.prepare();
+            if (resumePos > 0) player.seekTo(resumePos);
+            player.setPlayWhenReady(true);
+            Toast.makeText(PlayerActivity.this, "📶 弱网缓冲较慢，已自动切换 720P 流畅播放", Toast.LENGTH_SHORT).show();
+        }
+    };
+
     private com.google.android.exoplayer2.LoadControl buildLoadControl() {
         String prof = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_buffer_profile", "balanced");
-        int minMs = 15000, maxMs = 50000, playMs = 2500, rebufMs = 5000;
+        int minMs = 15000, maxMs = 60000, playMs = 1500, rebufMs = 2500;
         if ("fast".equals(prof)) {
-            minMs = 10000; maxMs = 15000; playMs = 1500; rebufMs = 3000;
+            minMs = 10000; maxMs = 20000; playMs = 1000; rebufMs = 2000;
         } else if ("weak_net".equals(prof)) {
-            minMs = 30000; maxMs = 120000; playMs = 4000; rebufMs = 8000;
+            minMs = 25000; maxMs = 120000; playMs = 2000; rebufMs = 3500;
         }
         return new com.google.android.exoplayer2.DefaultLoadControl.Builder()
                 .setBufferDurationsMs(minMs, maxMs, playMs, rebufMs)
@@ -1022,6 +1044,12 @@ public class PlayerActivity extends AppCompatActivity {
         player.addListener(new Player.Listener() {
             @Override public void onPlaybackStateChanged(int s) {
                 tvBuffering.setVisibility(s == Player.STATE_BUFFERING ? View.VISIBLE : View.GONE);
+                if (s == Player.STATE_BUFFERING && !useHls && mediaGuid != null && baseUrl != null) {
+                    handler.removeCallbacks(stallDowngradeR);
+                    handler.postDelayed(stallDowngradeR, 6500);
+                } else {
+                    handler.removeCallbacks(stallDowngradeR);
+                }
                 if (s == Player.STATE_READY) {
                     if (!seeked && seekTs > 0) {
                         long dMs = player.getDuration();
