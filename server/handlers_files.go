@@ -42,6 +42,10 @@ func (app *App) canAccessFSPath(u *User, target string) bool {
 	if u == nil {
 		return false
 	}
+	updatesDir := filepath.Join(app.dataDir, "updates")
+	if isSubPath(updatesDir, target) {
+		return true
+	}
 	libs := app.store.GetUserLibraries(u)
 	for _, lib := range libs {
 		if !lib.AllowDownload {
@@ -63,9 +67,16 @@ func (app *App) handleFilesList(w http.ResponseWriter, r *http.Request) {
 	}
 	reqPath := strings.TrimSpace(r.URL.Query().Get("path"))
 
-	// Only expose libraries with AllowDownload (文件共享属性) enabled
+	// Only expose libraries with AllowDownload (文件共享属性) enabled + built-in updates dir
 	if reqPath == "" {
 		var entries []FileEntryDTO
+		updatesDir := filepath.Join(app.dataDir, "updates")
+		_ = os.MkdirAll(updatesDir, 0755)
+		entries = append(entries, FileEntryDTO{
+			Name:  "📦 NASFun 客户端安装包",
+			Path:  updatesDir,
+			IsDir: true,
+		})
 		libs := app.store.GetUserLibraries(u)
 		for _, lib := range libs {
 			if !lib.AllowDownload {
