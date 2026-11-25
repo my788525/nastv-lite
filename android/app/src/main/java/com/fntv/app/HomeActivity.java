@@ -33,10 +33,18 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-public class HomeActivity extends AppCompatActivity {
+public class HomeActivity extends AppCompatActivity implements MusicPlaybackService.Listener {
 
-    private Button tabMovies, tabLibrary, tabFiles, tabSettings;
-    private View panelMovies, panelLibrary, panelFiles, panelSettings;
+    private Button tabMovies, tabMusic, tabLibrary, tabFiles, tabSettings;
+    private View panelMovies, panelMusic, panelLibrary, panelFiles, panelSettings;
+    private LinearLayout musicHubContainer;
+    private Button btnTopBack, btnTopNowPlaying;
+    private View miniPlayerBar, miniPlayerInfo;
+    private ImageView ivMiniCover;
+    private TextView tvMiniTitle, tvMiniSub;
+    private Button btnMiniPrev, btnMiniPlayPause, btnMiniNext, btnMiniStop;
+    private final Handler miniHandler = new Handler(Looper.getMainLooper());
+    private boolean musicHubBuilt = false;
     private RemoteFileBrowser remoteFileBrowser;
     private LinearLayout moviesContainer, libraryContainer;
     /** 详情页渲染目标容器：影视标签用 moviesContainer；媒体库标签内（如文件夹兜底）用 libraryContainer，
@@ -226,13 +234,28 @@ public class HomeActivity extends AppCompatActivity {
 
     private void initViews() {
         tabMovies = findViewById(R.id.tabMovies);
+        tabMusic = findViewById(R.id.tabMusic);
         tabLibrary = findViewById(R.id.tabLibrary);
         tabFiles = findViewById(R.id.tabFiles);
         tabSettings = findViewById(R.id.tabSettings);
         panelMovies = findViewById(R.id.panelMovies);
+        panelMusic = findViewById(R.id.panelMusic);
         panelLibrary = findViewById(R.id.panelLibrary);
         panelFiles = findViewById(R.id.panelFiles);
         panelSettings = findViewById(R.id.panelSettings);
+        musicHubContainer = findViewById(R.id.musicHubContainer);
+        btnTopBack = findViewById(R.id.btnTopBack);
+        btnTopNowPlaying = findViewById(R.id.btnTopNowPlaying);
+        miniPlayerBar = findViewById(R.id.miniPlayerBar);
+        miniPlayerInfo = findViewById(R.id.miniPlayerInfo);
+        ivMiniCover = findViewById(R.id.ivMiniCover);
+        tvMiniTitle = findViewById(R.id.tvMiniTitle);
+        tvMiniSub = findViewById(R.id.tvMiniSub);
+        btnMiniPrev = findViewById(R.id.btnMiniPrev);
+        btnMiniPlayPause = findViewById(R.id.btnMiniPlayPause);
+        btnMiniNext = findViewById(R.id.btnMiniNext);
+        btnMiniStop = findViewById(R.id.btnMiniStop);
+        setupTopAndMiniPlayer();
         remoteFileBrowser = new RemoteFileBrowser(
                 this,
                 baseUrl,
@@ -304,10 +327,20 @@ public class HomeActivity extends AppCompatActivity {
     // ======================== Tab ========================
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        updateMiniPlayer();
+    }
 
+    @Override
     protected void onResume() {
         super.onResume();
         CrashGuard.showIfCrashed(this);
+        MusicPlaybackService ms = MusicPlaybackService.getInstance();
+        if (ms != null) ms.addListener(this);
+        updateMiniPlayer();
+        updateTopBarState();
         if (savedDetailItem != null) {
             buildDetailPage(savedDetailItem, savedDetailInfo);
         } else if (currentTab == 0 && !mediaLibraries.isEmpty() && overviewBuilt && showingOverview) {
@@ -318,15 +351,25 @@ public class HomeActivity extends AppCompatActivity {
             loadLiveChannels();
         } else if (currentTab == 0 && !overviewBuilt && showingOverview) {
             loadOverview();
+        } else if (currentTab == 4) {
+            buildMusicHub();
         } else if (mediaLibraries.isEmpty()) {
             if (currentTab == 1) loadMediaLibraries();
             else loadOverview();
         }
     }
 
+    @Override
+    protected void onPause() {
+        super.onPause();
+        MusicPlaybackService ms = MusicPlaybackService.getInstance();
+        if (ms != null) ms.removeListener(this);
+    }
+
 
     private void setupTabs() {
         tabMovies.setOnClickListener(v -> switchTab(0));
+        if (tabMusic != null) tabMusic.setOnClickListener(v -> switchTab(4));
         tabLibrary.setOnClickListener(v -> { switchTab(1); loadMediaLibraries(); });
         if (tabFiles != null) tabFiles.setOnClickListener(v -> switchTab(2));
         tabSettings.setOnClickListener(v -> switchTab(3));
@@ -341,16 +384,21 @@ public class HomeActivity extends AppCompatActivity {
         // 切换标签时清除保存的页面状态，防止横竖屏切回时错误恢复
         savedBrowseList = null; savedBrowseGuid = null;
         panelMovies.setVisibility(index == 0 ? View.VISIBLE : View.GONE);
+        if (panelMusic != null) panelMusic.setVisibility(index == 4 ? View.VISIBLE : View.GONE);
         panelLibrary.setVisibility(index == 1 ? View.VISIBLE : View.GONE);
         if (panelFiles != null) panelFiles.setVisibility(index == 2 ? View.VISIBLE : View.GONE);
         panelSettings.setVisibility(index == 3 ? View.VISIBLE : View.GONE);
         tabMovies.setSelected(index == 0);
+        if (tabMusic != null) tabMusic.setSelected(index == 4);
         tabLibrary.setSelected(index == 1);
         if (tabFiles != null) tabFiles.setSelected(index == 2);
         tabSettings.setSelected(index == 3);
-        tvSection.setText(index == 0 ? "影视" : index == 1 ? "媒体库" : index == 2 ? "远程文件" : "设置");
+        updateTopBarState();
         if (index == 0) tabMovies.requestFocus();
-        else if (index == 1) tabLibrary.requestFocus();
+        else if (index == 4) {
+            if (tabMusic != null) tabMusic.requestFocus();
+            buildMusicHub();
+        } else if (index == 1) tabLibrary.requestFocus();
         else if (index == 2) {
             if (tabFiles != null) tabFiles.requestFocus();
             if (remoteFileBrowser != null) remoteFileBrowser.ensureLoaded();
@@ -422,6 +470,7 @@ public class HomeActivity extends AppCompatActivity {
         showingDetail = false;
         showingEpisodes = false;
         overviewBuilt = true;
+        updateTopBarState();
 
         if (isListViewMode()) {
             renderOverviewList();
@@ -477,6 +526,7 @@ public class HomeActivity extends AppCompatActivity {
         showingDetail = false;
         showingEpisodes = false;
         overviewBuilt = true;
+        updateTopBarState();
 
         // 顶部控制栏
         LinearLayout topBar = new LinearLayout(this);
@@ -1132,6 +1182,7 @@ public class HomeActivity extends AppCompatActivity {
         browseFromLibrary = (container == libraryContainer);
         if (browseFromLibrary) etSearch.setVisibility(View.GONE);
         if (container == moviesContainer) showingOverview = false;
+        updateTopBarState();
 
         // 存储当前浏览上下文，排序变化时用于重新加载
         currentBrowseGuid = ancestorGuid;
@@ -2501,6 +2552,7 @@ public class HomeActivity extends AppCompatActivity {
         detailContainer = detailInLibrary ? libraryContainer : moviesContainer;
         detailContainer.removeAllViews();
         savedDetailItem = item; savedDetailInfo = info;
+        updateTopBarState();
 
         boolean isLandscape = getResources().getConfiguration().orientation
                 == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
@@ -3751,6 +3803,429 @@ public class HomeActivity extends AppCompatActivity {
         intent.putExtra("skip_auto_login", true);
         startActivity(intent);
         finish();
+    }
+
+    // ==================== 顶部导航、全局迷你播放器与音乐模式中心 ====================
+
+    private void setupTopAndMiniPlayer() {
+        if (btnTopBack != null) {
+            btnTopBack.setOnClickListener(v -> onKeyDown(KeyEvent.KEYCODE_BACK, new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK)));
+        }
+        if (btnTopNowPlaying != null) {
+            btnTopNowPlaying.setOnClickListener(v -> startActivity(new Intent(this, MusicPlayerActivity.class)));
+        }
+        if (miniPlayerInfo != null) {
+            miniPlayerInfo.setOnClickListener(v -> startActivity(new Intent(this, MusicPlayerActivity.class)));
+        }
+        if (btnMiniPrev != null) {
+            btnMiniPrev.setOnClickListener(v -> {
+                MusicPlaybackService ms = MusicPlaybackService.getInstance();
+                if (ms != null) ms.playPrevious();
+            });
+        }
+        if (btnMiniPlayPause != null) {
+            btnMiniPlayPause.setOnClickListener(v -> {
+                MusicPlaybackService ms = MusicPlaybackService.getInstance();
+                if (ms != null) ms.togglePlayPause();
+                else MusicPlaybackService.startPendingIfNeeded(this);
+            });
+        }
+        if (btnMiniNext != null) {
+            btnMiniNext.setOnClickListener(v -> {
+                MusicPlaybackService ms = MusicPlaybackService.getInstance();
+                if (ms != null) ms.playNext(false);
+            });
+        }
+        if (btnMiniStop != null) {
+            btnMiniStop.setOnClickListener(v -> {
+                MusicPlaybackService ms = MusicPlaybackService.getInstance();
+                if (ms != null) ms.stopAndRelease();
+                if (miniPlayerBar != null) miniPlayerBar.setVisibility(View.GONE);
+                if (btnTopNowPlaying != null) btnTopNowPlaying.setVisibility(View.GONE);
+            });
+        }
+    }
+
+    private void updateTopBarState() {
+        if (tvSection != null) {
+            if (currentTab == 0) {
+                tvSection.setText(showingDetail ? "🎬 详情" : (savedBrowseTitle != null && !showingOverview ? "🎬 " + savedBrowseTitle : "🎬 影视模式"));
+                tvSection.setTextColor(0xFF38BDF8);
+            } else if (currentTab == 4) {
+                tvSection.setText("🎵 音乐播放器模式");
+                tvSection.setTextColor(0xFF34D399);
+            } else if (currentTab == 1) {
+                tvSection.setText(showingDetail ? "📁 详情" : (savedBrowseTitle != null ? "📁 " + savedBrowseTitle : "📁 媒体库"));
+                tvSection.setTextColor(0xFF38BDF8);
+            } else if (currentTab == 2) {
+                tvSection.setText("📂 远程文件");
+                tvSection.setTextColor(0xFF38BDF8);
+            } else {
+                tvSection.setText("⚙ 设置");
+                tvSection.setTextColor(0xFF94A3B8);
+            }
+        }
+        if (btnTopBack != null) {
+            boolean canGoBack = showingDetail || showingEpisodes || isSearching || !folderNavStack.isEmpty()
+                    || ((currentTab == 0 || currentTab == 1) && savedBrowseGuid != null);
+            btnTopBack.setVisibility(canGoBack ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void updateMiniPlayer() {
+        MusicPlaybackService ms = MusicPlaybackService.getInstance();
+        PlayListItem item = ms != null ? ms.getCurrentItem() : null;
+        if (item == null) {
+            if (miniPlayerBar != null) miniPlayerBar.setVisibility(View.GONE);
+            if (btnTopNowPlaying != null) btnTopNowPlaying.setVisibility(View.GONE);
+            return;
+        }
+        if (miniPlayerBar != null) miniPlayerBar.setVisibility(View.VISIBLE);
+        if (btnTopNowPlaying != null) btnTopNowPlaying.setVisibility(View.VISIBLE);
+        if (tvMiniTitle != null) tvMiniTitle.setText(item.title != null ? item.title : "未知曲目");
+        if (tvMiniSub != null) {
+            String artist = ms.getCurrentArtist();
+            boolean playing = ms.isPlaying();
+            boolean isOff = OfflineMusicManager.getInstance(this).isDownloaded(item.guid);
+            String br = OfflineMusicManager.getOnlineBitrate(this);
+            String q = isOff ? "本地离线" : ("original".equalsIgnoreCase(br) ? "原画" : br + "k");
+            String stateTxt = playing ? "正在播放" : "已暂停";
+            String sub = stateTxt + " · " + q + (artist != null && !artist.isEmpty() ? " · " + artist : "");
+            tvMiniSub.setText(sub);
+            tvMiniSub.setTextColor(playing ? 0xFF34D399 : 0xFF94A3B8);
+        }
+        if (btnMiniPlayPause != null) {
+            btnMiniPlayPause.setText(ms.isPlaying() ? "⏸" : "▶");
+        }
+        if (ivMiniCover != null) {
+            java.io.File localCov = OfflineMusicManager.getInstance(this).getLocalCoverFile(item.guid);
+            if (localCov != null) {
+                ivMiniCover.setImageURI(android.net.Uri.fromFile(localCov));
+            } else if (baseUrl != null && !baseUrl.isEmpty() && item.guid != null) {
+                SimpleImageLoader.load(baseUrl + "/v/api/v1/img/" + item.guid, ivMiniCover, apiManager.getClient());
+            }
+        }
+    }
+
+    @Override
+    public void onTrackChanged(PlayListItem item, int index, int total) {
+        miniHandler.post(this::updateMiniPlayer);
+    }
+
+    @Override
+    public void onPlayStateChanged(boolean playing) {
+        miniHandler.post(this::updateMiniPlayer);
+    }
+
+    @Override
+    public void onLyricsLoaded(com.fntv.app.util.LyricsParser.Result lyrics, String artist, String album) {
+        miniHandler.post(this::updateMiniPlayer);
+    }
+
+    @Override
+    public void onServiceStopped() {
+        miniHandler.post(() -> {
+            if (miniPlayerBar != null) miniPlayerBar.setVisibility(View.GONE);
+            if (btnTopNowPlaying != null) btnTopNowPlaying.setVisibility(View.GONE);
+        });
+    }
+
+    private void buildMusicHub() {
+        if (musicHubContainer == null) return;
+        musicHubContainer.removeAllViews();
+        float d = getResources().getDisplayMetrics().density;
+
+        // 1. 顶部音乐模式概览卡片
+        LinearLayout heroCard = new LinearLayout(this);
+        heroCard.setOrientation(LinearLayout.VERTICAL);
+        heroCard.setBackgroundColor(0xFF111827);
+        heroCard.setPadding((int)(14*d), (int)(14*d), (int)(14*d), (int)(14*d));
+        LinearLayout.LayoutParams heroLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        heroLp.bottomMargin = (int)(12*d);
+        heroCard.setLayoutParams(heroLp);
+
+        TextView heroTitle = new TextView(this);
+        heroTitle.setText("🎵 音乐播放器模式");
+        heroTitle.setTextColor(0xFFFFFFFF);
+        heroTitle.setTextSize(17);
+        heroTitle.setTypeface(null, Typeface.BOLD);
+        heroCard.addView(heroTitle);
+
+        String onlineBr = OfflineMusicManager.getOnlineBitrate(this);
+        String brTxt = "original".equalsIgnoreCase(onlineBr) ? "原画直连" : onlineBr + "k HLS 流媒体";
+        int offCnt = OfflineMusicManager.getInstance(this).getTrackCount();
+        TextView heroSub = new TextView(this);
+        heroSub.setText("边下边播实时转码 · 当前在线码率：" + brTxt + " · 本地离线：" + offCnt + " 首");
+        heroSub.setTextColor(0xFF94A3B8);
+        heroSub.setTextSize(12);
+        heroSub.setPadding(0, (int)(4*d), 0, (int)(10*d));
+        heroCard.addView(heroSub);
+
+        // 快捷功能按钮行
+        HorizontalScrollView hsv = new HorizontalScrollView(this);
+        hsv.setHorizontalScrollBarEnabled(false);
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button btnOpenPlayer = makeHubActionBtn("🎧 进入歌词播放器", 0xFF34D399, v -> {
+            MusicPlaybackService ms = MusicPlaybackService.getInstance();
+            if (ms != null && ms.getCurrentItem() != null) {
+                startActivity(new Intent(this, MusicPlayerActivity.class));
+            } else {
+                Toast.makeText(this, "请先选择一首歌曲开始播放", Toast.LENGTH_SHORT).show();
+            }
+        });
+        actionRow.addView(btnOpenPlayer);
+
+        if (offCnt > 0) {
+            Button btnPlayOffline = makeHubActionBtn("💾 播放本地离线 (" + offCnt + ")", 0xFF38BDF8, v -> {
+                List<PlayListItem> offList = OfflineMusicManager.getInstance(this).getOfflinePlayListItems();
+                if (!offList.isEmpty()) {
+                    MusicPlaybackService.startQueue(this, offList, 0);
+                    startActivity(new Intent(this, MusicPlayerActivity.class));
+                }
+            });
+            actionRow.addView(btnPlayOffline);
+        }
+
+        Button btnBitrate = makeHubActionBtn("⚡ 在线音质: " + ("original".equalsIgnoreCase(onlineBr) ? "原画" : onlineBr + "k"), 0xFFE2E8F0, v -> {
+            String cur = OfflineMusicManager.getOnlineBitrate(this);
+            int checked = 3;
+            for (int i = 0; i < OfflineMusicManager.BITRATE_VALUES.length; i++) {
+                if (OfflineMusicManager.BITRATE_VALUES[i].equals(cur)) { checked = i; break; }
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("选择在线听歌最大码率")
+                    .setSingleChoiceItems(OfflineMusicManager.BITRATE_LABELS, checked, (dlg, which) -> {
+                        OfflineMusicManager.setOnlineBitrate(this, OfflineMusicManager.BITRATE_VALUES[which]);
+                        MusicPlaybackService s = MusicPlaybackService.getInstance();
+                        if (s != null) s.reloadForOnlineBitrateChange();
+                        dlg.dismiss();
+                        buildMusicHub();
+                    }).show();
+        });
+        actionRow.addView(btnBitrate);
+
+        hsv.addView(actionRow);
+        heroCard.addView(hsv);
+        musicHubContainer.addView(heroCard);
+
+        // 2. 识别音乐媒体库
+        List<MediaDbItem> musicLibs = new ArrayList<>();
+        for (MediaDbItem lib : mediaLibraries) {
+            String cat = lib.category != null ? lib.category.toLowerCase() : "";
+            String mode = lib.mode != null ? lib.mode.toLowerCase() : "";
+            String title = lib.title != null ? lib.title.toLowerCase() : "";
+            if ("music".equals(mode) || "audio".equals(cat) || "music".equals(cat)
+                    || title.contains("音乐") || title.contains("music") || title.contains("歌")) {
+                musicLibs.add(lib);
+            }
+        }
+
+        if (musicLibs.isEmpty() && mediaLibraries.isEmpty()) {
+            TextView tv = new TextView(this);
+            tv.setText("正在加载媒体库...");
+            tv.setTextColor(0xFF94A3B8);
+            tv.setPadding((int)(8*d), (int)(16*d), (int)(8*d), (int)(16*d));
+            musicHubContainer.addView(tv);
+            return;
+        }
+
+        if (musicLibs.isEmpty()) {
+            TextView tv = new TextView(this);
+            tv.setText("未检测到单独的音乐库，您可前往「媒体库」或「文件」中直接点击音频文件播放，或播放本地离线音乐。");
+            tv.setTextColor(0xFF94A3B8);
+            tv.setTextSize(13);
+            tv.setPadding((int)(8*d), (int)(12*d), (int)(8*d), (int)(12*d));
+            musicHubContainer.addView(tv);
+            return;
+        }
+
+        TextView libHeader = new TextView(this);
+        libHeader.setText("音乐媒体库");
+        libHeader.setTextColor(0xFFF8FAFC);
+        libHeader.setTextSize(15);
+        libHeader.setTypeface(null, Typeface.BOLD);
+        libHeader.setPadding(0, (int)(4*d), 0, (int)(8*d));
+        musicHubContainer.addView(libHeader);
+
+        for (final MediaDbItem lib : musicLibs) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setBackgroundResource(R.drawable.bg_card);
+            row.setPadding((int)(14*d), (int)(12*d), (int)(14*d), (int)(12*d));
+            row.setFocusable(true);
+            row.setClickable(true);
+            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rlp.bottomMargin = (int)(8*d);
+            row.setLayoutParams(rlp);
+
+            TextView icon = new TextView(this);
+            icon.setText("💿");
+            icon.setTextSize(20);
+            icon.setPadding(0, 0, (int)(12*d), 0);
+            row.addView(icon);
+
+            TextView name = new TextView(this);
+            name.setText(lib.title != null ? lib.title : "音乐库");
+            name.setTextColor(0xFFFFFFFF);
+            name.setTextSize(15);
+            name.setTypeface(null, Typeface.BOLD);
+            name.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(name);
+
+            TextView go = new TextView(this);
+            go.setText("浏览 ›");
+            go.setTextColor(0xFF34D399);
+            go.setTextSize(13);
+            row.addView(go);
+
+            row.setOnClickListener(v -> {
+                switchTab(1);
+                browseItemsInContainer(lib.guid, lib.title, libraryContainer, tvLibraryLoading, null, isLibFolderForm(lib));
+            });
+            musicHubContainer.addView(row);
+        }
+
+        // 自动加载第一个音乐库的曲目列表，实现“点开音乐页就能直接听歌”
+        final MediaDbItem firstLib = musicLibs.get(0);
+        final LinearLayout trackListBox = new LinearLayout(this);
+        trackListBox.setOrientation(LinearLayout.VERTICAL);
+        musicHubContainer.addView(trackListBox);
+        loadMusicTracksForHub(firstLib.guid, firstLib.title, trackListBox);
+    }
+
+    private Button makeHubActionBtn(String text, int textColor, View.OnClickListener l) {
+        float d = getResources().getDisplayMetrics().density;
+        Button b = new Button(this);
+        b.setText(text);
+        b.setTextColor(textColor);
+        b.setTextSize(12);
+        b.setBackgroundResource(R.drawable.bg_input);
+        b.setFocusable(true);
+        b.setPadding((int)(12*d), 0, (int)(12*d), 0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, (int)(36*d));
+        lp.rightMargin = (int)(8*d);
+        b.setLayoutParams(lp);
+        b.setOnClickListener(l);
+        return b;
+    }
+
+    private void loadMusicTracksForHub(String libGuid, String libTitle, final LinearLayout container) {
+        float d = getResources().getDisplayMetrics().density;
+        final TextView loadingTv = new TextView(this);
+        loadingTv.setText("正在加载「" + libTitle + "」歌曲...");
+        loadingTv.setTextColor(0xFF94A3B8);
+        loadingTv.setTextSize(12);
+        loadingTv.setPadding(0, (int)(8*d), 0, (int)(8*d));
+        container.addView(loadingTv);
+
+        ItemListRequest req = new ItemListRequest(
+                libGuid,
+                Arrays.asList("Audio", "Music", "Directory", "Folder"),
+                false,
+                "create_time",
+                "DESC",
+                200);
+        apiManager.getApi().getItemList(req).enqueue(new Callback<ApiResponse<ItemListResponse>>() {
+            @Override
+            public void onResponse(Call<ApiResponse<ItemListResponse>> call, Response<ApiResponse<ItemListResponse>> response) {
+                container.removeView(loadingTv);
+                if (!response.isSuccessful() || response.body() == null || response.body().data == null || response.body().data.list == null) {
+                    return;
+                }
+                List<PlayListItem> all = response.body().data.list;
+                final List<PlayListItem> songs = new ArrayList<>();
+                for (PlayListItem it : all) {
+                    if (it != null && !it.isFolder()) songs.add(it);
+                }
+                if (songs.isEmpty()) return;
+
+                LinearLayout topRow = new LinearLayout(HomeActivity.this);
+                topRow.setOrientation(LinearLayout.HORIZONTAL);
+                topRow.setGravity(Gravity.CENTER_VERTICAL);
+                topRow.setPadding(0, (int)(10*d), 0, (int)(8*d));
+
+                TextView hdr = new TextView(HomeActivity.this);
+                hdr.setText("全部歌曲 (" + songs.size() + ")");
+                hdr.setTextColor(0xFFF8FAFC);
+                hdr.setTextSize(15);
+                hdr.setTypeface(null, Typeface.BOLD);
+                hdr.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                topRow.addView(hdr);
+
+                Button btnPlayAll = makeHubActionBtn("▶ 顺序播放", 0xFF34D399, v -> {
+                    MusicPlaybackService.setPlayModeStatic(HomeActivity.this, MusicPlaybackService.MODE_LOOP_ALL);
+                    MusicPlaybackService.startQueue(HomeActivity.this, songs, 0);
+                    startActivity(new Intent(HomeActivity.this, MusicPlayerActivity.class));
+                });
+                topRow.addView(btnPlayAll);
+
+                Button btnShuffleAll = makeHubActionBtn("🔀 随机播放", 0xFF38BDF8, v -> {
+                    MusicPlaybackService.setPlayModeStatic(HomeActivity.this, MusicPlaybackService.MODE_SHUFFLE);
+                    int rIdx = new java.util.Random().nextInt(songs.size());
+                    MusicPlaybackService.startQueue(HomeActivity.this, songs, rIdx);
+                    startActivity(new Intent(HomeActivity.this, MusicPlayerActivity.class));
+                });
+                topRow.addView(btnShuffleAll);
+                container.addView(topRow);
+
+                for (int i = 0; i < songs.size(); i++) {
+                    final int idx = i;
+                    final PlayListItem song = songs.get(i);
+                    LinearLayout row = new LinearLayout(HomeActivity.this);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    row.setGravity(Gravity.CENTER_VERTICAL);
+                    row.setBackgroundResource(R.drawable.bg_card);
+                    row.setPadding((int)(12*d), (int)(10*d), (int)(12*d), (int)(10*d));
+                    row.setFocusable(true);
+                    row.setClickable(true);
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    lp.bottomMargin = (int)(6*d);
+                    row.setLayoutParams(lp);
+
+                    TextView num = new TextView(HomeActivity.this);
+                    num.setText(String.valueOf(i + 1));
+                    num.setTextColor(0xFF64748B);
+                    num.setTextSize(12);
+                    num.setWidth((int)(28*d));
+                    row.addView(num);
+
+                    TextView titleTv = new TextView(HomeActivity.this);
+                    titleTv.setText(song.title != null ? song.title : "未知歌曲");
+                    titleTv.setTextColor(0xFFF8FAFC);
+                    titleTv.setTextSize(14);
+                    titleTv.setSingleLine(true);
+                    titleTv.setEllipsize(TextUtils.TruncateAt.END);
+                    titleTv.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                    row.addView(titleTv);
+
+                    if (song.duration > 0) {
+                        TextView durTv = new TextView(HomeActivity.this);
+                        durTv.setText(formatDuration(song.duration));
+                        durTv.setTextColor(0xFF94A3B8);
+                        durTv.setTextSize(12);
+                        durTv.setPadding((int)(8*d), 0, 0, 0);
+                        row.addView(durTv);
+                    }
+
+                    row.setOnClickListener(v -> {
+                        MusicPlaybackService.startQueue(HomeActivity.this, songs, idx);
+                        startActivity(new Intent(HomeActivity.this, MusicPlayerActivity.class));
+                    });
+                    container.addView(row);
+                }
+            }
+            @Override
+            public void onFailure(Call<ApiResponse<ItemListResponse>> call, Throwable t) {
+                container.removeView(loadingTv);
+            }
+        });
     }
 
 

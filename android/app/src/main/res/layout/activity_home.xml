@@ -20,8 +20,23 @@ DPAD 遥控器友好
         android:background="@color/bg_card"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingLeft="16dp"
-        android:paddingRight="16dp">
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp">
+
+        <Button
+            android:id="@+id/btnTopBack"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:layout_marginRight="10dp"
+            android:background="@drawable/bg_input"
+            android:focusable="true"
+            android:minWidth="0dp"
+            android:paddingLeft="10dp"
+            android:paddingRight="10dp"
+            android:text="⬅ 返回"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -36,10 +51,29 @@ DPAD 遥控器友好
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="8dp"
+            android:ellipsize="end"
             android:gravity="end"
-            android:text="影视"
+            android:singleLine="true"
+            android:text="🎬 影视模式"
             android:textColor="@color/colorAccent"
-            android:textSize="14sp" />
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnTopNowPlaying"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_btn_primary"
+            android:focusable="true"
+            android:minWidth="0dp"
+            android:paddingLeft="10dp"
+            android:paddingRight="10dp"
+            android:text="🎵 歌词页"
+            android:textColor="@color/musicAccent"
+            android:textSize="12sp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <View
@@ -1011,7 +1045,145 @@ DPAD 遥控器友好
 
         </LinearLayout>
 
+        <!-- Tab 音乐: 音乐播放器模式 -->
+        <LinearLayout
+            android:id="@+id/panelMusic"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fillViewport="true"
+                android:scrollbars="none"
+                android:descendantFocusability="afterDescendants">
+
+                <LinearLayout
+                    android:id="@+id/musicHubContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="12dp" />
+
+            </ScrollView>
+
+        </LinearLayout>
+
     </FrameLayout>
+
+    <!-- ========== 全局音乐迷你控制条 (后台播放时常驻) ========== -->
+    <LinearLayout
+        android:id="@+id/miniPlayerBar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="#FF111827"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="10dp"
+        android:paddingRight="8dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/miniPlayerInfo"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingRight="6dp">
+
+            <ImageView
+                android:id="@+id/ivMiniCover"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="#FF1E293B"
+                android:scaleType="centerCrop" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="10dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvMiniTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:singleLine="true"
+                    android:text="正在播放"
+                    android:textColor="@color/text_white"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvMiniSub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:singleLine="true"
+                    android:text="点击进入歌词与队列"
+                    android:textColor="@color/musicAccent"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnMiniPrev"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/selector_tab"
+            android:focusable="true"
+            android:minWidth="0dp"
+            android:padding="0dp"
+            android:text="⏮"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btnMiniPlayPause"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:layout_marginLeft="2dp"
+            android:layout_marginRight="2dp"
+            android:background="@drawable/bg_btn_primary"
+            android:focusable="true"
+            android:minWidth="0dp"
+            android:padding="0dp"
+            android:text="⏸"
+            android:textColor="@color/musicAccent"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/btnMiniNext"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/selector_tab"
+            android:focusable="true"
+            android:minWidth="0dp"
+            android:padding="0dp"
+            android:text="⏭"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btnMiniStop"
+            android:layout_width="34dp"
+            android:layout_height="38dp"
+            android:layout_marginLeft="2dp"
+            android:background="@drawable/selector_tab"
+            android:focusable="true"
+            android:minWidth="0dp"
+            android:padding="0dp"
+            android:text="✕"
+            android:textColor="@color/text_hint"
+            android:textSize="13sp" />
+    </LinearLayout>
 
     <View
         android:layout_width="match_parent"
@@ -1026,8 +1198,8 @@ DPAD 遥控器友好
         android:background="@color/bg_dark"
         android:gravity="center"
         android:orientation="horizontal"
-        android:paddingLeft="6dp"
-        android:paddingRight="6dp">
+        android:paddingLeft="4dp"
+        android:paddingRight="4dp">
 
         <Button
             android:id="@+id/tabMovies"
@@ -1037,11 +1209,26 @@ DPAD 遥控器友好
             android:layout_weight="1"
             android:background="@drawable/selector_tab"
             android:focusable="true"
-            android:nextFocusRight="@+id/tabLibrary"
-            android:text="影视"
+            android:nextFocusRight="@+id/tabMusic"
+            android:text="🎬 影视"
             android:textAllCaps="false"
             android:textColor="@color/tab_text"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/tabMusic"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_margin="3dp"
+            android:layout_weight="1"
+            android:background="@drawable/selector_tab"
+            android:focusable="true"
+            android:nextFocusLeft="@+id/tabMovies"
+            android:nextFocusRight="@+id/tabLibrary"
+            android:text="🎵 音乐"
+            android:textAllCaps="false"
+            android:textColor="@color/tab_text"
+            android:textSize="12sp" />
 
         <Button
             android:id="@+id/tabLibrary"
@@ -1051,12 +1238,12 @@ DPAD 遥控器友好
             android:layout_weight="1"
             android:background="@drawable/selector_tab"
             android:focusable="true"
-            android:nextFocusLeft="@+id/tabMovies"
+            android:nextFocusLeft="@+id/tabMusic"
             android:nextFocusRight="@+id/tabFiles"
-            android:text="媒体库"
+            android:text="📁 媒体库"
             android:textAllCaps="false"
             android:textColor="@color/tab_text"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
 
         <Button
             android:id="@+id/tabFiles"
@@ -1068,10 +1255,10 @@ DPAD 遥控器友好
             android:focusable="true"
             android:nextFocusLeft="@+id/tabLibrary"
             android:nextFocusRight="@+id/tabSettings"
-            android:text="文件"
+            android:text="📂 文件"
             android:textAllCaps="false"
             android:textColor="@color/tab_text"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
 
         <Button
             android:id="@+id/tabSettings"
@@ -1082,10 +1269,10 @@ DPAD 遥控器友好
             android:background="@drawable/selector_tab"
             android:focusable="true"
             android:nextFocusLeft="@+id/tabFiles"
-            android:text="设置"
+            android:text="⚙ 设置"
             android:textAllCaps="false"
             android:textColor="@color/tab_text"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
 
     </LinearLayout>
 

@@ -49,6 +49,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
     private ImageView coverImg;
     private TextView tvTitle;
     private TextView tvArtist;
+    private TextView tvQualityBadge;
     private SyncedLyricsView lyricsView;
     private TextView tvPos;
     private TextView tvDur;
@@ -98,7 +99,7 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
 
         TextView btnBack = makePillBtn("⬅ 返回", "#1E293B");
         btnBack.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { finish(); }
+            @Override public void onClick(View v) { navigateBackToHome(); }
         });
         topBar.addView(btnBack);
 
@@ -175,6 +176,22 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         artistLp.topMargin = dp(4);
         infoPane.addView(tvArtist, artistLp);
+
+        tvQualityBadge = new TextView(this);
+        tvQualityBadge.setText("在线 · 320k");
+        tvQualityBadge.setTextColor(Color.parseColor("#34D399"));
+        tvQualityBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        tvQualityBadge.setGravity(Gravity.CENTER);
+        tvQualityBadge.setPadding(dp(10), dp(3), dp(10), dp(3));
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setColor(Color.parseColor("#0F2922"));
+        badgeBg.setCornerRadius(dp(10));
+        badgeBg.setStroke(dp(1), Color.parseColor("#1E4D3E"));
+        tvQualityBadge.setBackground(badgeBg);
+        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        badgeLp.topMargin = dp(6);
+        infoPane.addView(tvQualityBadge, badgeLp);
 
         lyricsView = new SyncedLyricsView(this);
         lyricsView.setOnLineClickListener(new SyncedLyricsView.OnLineClickListener() {
@@ -291,6 +308,10 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) {
+            navigateBackToHome();
+            return true;
+        }
         MusicPlaybackService s = MusicPlaybackService.getInstance();
         if (s != null) {
             if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY || keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE) {
@@ -567,11 +588,19 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
     }
 
     @Override
-    public void onTrackChanged(final PlayListItem item, int index, int total) {
+    public void onTrackChanged(final PlayListItem item, final int index, final int total) {
         uiHandler.post(new Runnable() {
             @Override
             public void run() {
                 tvTitle.setText(item.title);
+                if (tvQualityBadge != null) {
+                    boolean isOffline = OfflineMusicManager.getInstance(MusicPlayerActivity.this).isDownloaded(item.guid);
+                    String br = OfflineMusicManager.getOnlineBitrate(MusicPlayerActivity.this);
+                    String qTxt = isOffline ? "🎧 本地离线"
+                            : ("original".equalsIgnoreCase(br) ? "🌐 原画直连" : "⚡ HLS · " + br + "k");
+                    String posTxt = total > 0 ? (" · " + (index + 1) + "/" + total) : "";
+                    tvQualityBadge.setText(qTxt + posTxt);
+                }
                 File localCov = OfflineMusicManager.getInstance(MusicPlayerActivity.this).getLocalCoverFile(item.guid);
                 if (localCov != null) {
                     coverImg.setImageURI(Uri.fromFile(localCov));
@@ -659,6 +688,15 @@ public class MusicPlayerActivity extends AppCompatActivity implements MusicPlayb
         tv.setClickable(true);
         tv.setBackground(makeFocusDrawable("#00000000", 12));
         return tv;
+    }
+
+    private void navigateBackToHome() {
+        if (isTaskRoot()) {
+            Intent home = new Intent(this, HomeActivity.class);
+            home.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(home);
+        }
+        finish();
     }
 
     private String fmtTime(long ms) {

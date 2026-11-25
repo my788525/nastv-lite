@@ -148,6 +148,11 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         CrashGuard.install(this);
+        // 播放影视时自动暂停后台音乐，避免音画声音重叠
+        MusicPlaybackService ms = MusicPlaybackService.getInstance();
+        if (ms != null && ms.isPlaying()) {
+            ms.pause();
+        }
         setContentView(R.layout.activity_player);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(Color.BLACK);

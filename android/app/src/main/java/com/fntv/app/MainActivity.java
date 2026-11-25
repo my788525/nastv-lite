@@ -67,6 +67,27 @@ public class MainActivity extends AppCompatActivity {
         }
 
         prefs = getSharedPreferences("fntv_prefs", MODE_PRIVATE);
+        boolean skipAuto = getIntent().getBooleanExtra("skip_auto_login", false);
+        // 若已有有效登录态或音乐服务正在后台运行，直接恢复进入主页，避免切回应用时重新走登录流程
+        if (!skipAuto) {
+            String savedHost = prefs.getString("host", "").trim();
+            String savedTok = prefs.getString("auth_token", "").trim();
+            boolean hasService = MusicPlaybackService.getInstance() != null;
+            if (!savedHost.isEmpty() && !savedTok.isEmpty() && (hasService || prefs.getBoolean("remember", false) || prefs.getBoolean("fnid_remember", false))) {
+                String normHost = FnApiManager.normalizeHostUrl(savedHost);
+                FnApiManager.getInstance().updateBaseUrl(normHost);
+                FnApiManager.getInstance().setToken(savedTok);
+                Intent homeIntent = new Intent(this, HomeActivity.class);
+                homeIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                startActivity(homeIntent);
+                if (hasService && MusicPlaybackService.getInstance().getCurrentItem() != null
+                        && getIntent().getBooleanExtra("open_music_player", false)) {
+                    startActivity(new Intent(this, MusicPlayerActivity.class));
+                }
+                finish();
+                return;
+            }
+        }
         density = getResources().getDisplayMetrics().density;
         btnLogin = findViewById(R.id.btnLogin);
         LinearLayout loginCard = findViewById(R.id.loginCard);
@@ -217,8 +238,7 @@ public class MainActivity extends AppCompatActivity {
             loginCard.addView(btnOffline);
         }
 
-        // 自动登录（仅冷启动时触发，手动退出登录不触发）
-        boolean skipAuto = getIntent().getBooleanExtra("skip_auto_login", false);
+        // 自动登录（仅冷启动且无可用 Token 时触发，手动退出登录不触发）
         if (!skipAuto) {
             btnLogin.postDelayed(() -> {
                 if (isFnIdMode) {

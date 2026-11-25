@@ -548,6 +548,19 @@ public class MusicPlaybackService extends Service {
         else resume();
     }
 
+    public static void setPlayModeStatic(Context ctx, int mode) {
+        if (ctx != null) {
+            ctx.getSharedPreferences("fntv_prefs", MODE_PRIVATE).edit().putInt("music_play_mode", mode).apply();
+        }
+        if (instance != null) {
+            instance.playMode = mode;
+        }
+    }
+
+    public void stopAndRelease() {
+        stopPlaybackAndSelf();
+    }
+
     public void pause() {
         if (player != null) player.pause();
     }
@@ -722,6 +735,7 @@ public class MusicPlaybackService extends Service {
                 : PendingIntent.FLAG_UPDATE_CURRENT;
 
         Intent openIntent = new Intent(this, MusicPlayerActivity.class);
+        openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent contentPi = PendingIntent.getActivity(this, 0, openIntent, piFlags);
 
         PendingIntent prevPi = PendingIntent.getService(this, 1, new Intent(this, MusicPlaybackService.class).setAction(ACTION_PREV), piFlags);
