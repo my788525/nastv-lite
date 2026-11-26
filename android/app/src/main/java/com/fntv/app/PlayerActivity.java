@@ -152,11 +152,14 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         CrashGuard.install(this);
-        // 播放影视时自动暂停后台音乐，避免音画声音重叠
+        // 播放影视时自动停止音乐服务并隐藏浮窗歌词与迷你音乐条，避免音画重叠或界面残留
         MusicPlaybackService ms = MusicPlaybackService.getInstance();
-        if (ms != null && ms.isPlaying()) {
-            ms.pause();
+        if (ms != null) {
+            ms.stopAndRelease();
         }
+        try {
+            stopService(new android.content.Intent(this, FloatingLyricsService.class));
+        } catch (Exception ignored) {}
         setContentView(R.layout.activity_player);
         registerNetworkReceiver();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
