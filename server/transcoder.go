@@ -543,14 +543,34 @@ func (t *Transcoder) PrewarmAllAudioCache(s *Store, qualityKey string) {
 	if kbps <= 0 {
 		kbps = 320
 	}
-	cachedCount := int64(0)
+	var cachedCount int64
+	var pending []*MediaItem
+	var pendingTranscode int
+	for _, it := range audioItems {
+		sessDir := filepath.Join(t.audioCacheDir, it.Guid+"_"+qualityKey)
+		hlsOK := isCompletedHLS(filepath.Join(sessDir, "index.m3u8"))
+		if hlsOK {
+			cachedCount++
+		} else {
+			pendingTranscode++
+		}
+		needsEnrich := it.Lyrics == "" || it.PosterPath == "" || it.Artist == ""
+		if !hlsOK || needsEnrich {
+			pending = append(pending, it)
+		}
+	}
+	if len(pending) == 0 {
+		return
+	}
+	log.Printf("[AudioPrewarm] 已有缓存 %d/%d 首，待预缓存 %d 首 (%s)", cachedCount, len(audioItems), pendingTranscode, qualityKey)
+
 	newCount := int64(0)
 	enrichedCount := int64(0)
 	var cntMu sync.Mutex
 
 	workers := 2
-	jobs := make(chan *MediaItem, len(audioItems))
-	for _, it := range audioItems {
+	jobs := make(chan *MediaItem, len(pending))
+	for _, it := range pending {
 		jobs <- it
 	}
 	close(jobs)
@@ -578,9 +598,6 @@ func (t *Transcoder) PrewarmAllAudioCache(s *Store, qualityKey string) {
 				sessDir := filepath.Join(t.audioCacheDir, it.Guid+"_"+qualityKey)
 				m3u8Path := filepath.Join(sessDir, "index.m3u8")
 				if isCompletedHLS(m3u8Path) {
-					cntMu.Lock()
-					cachedCount++
-					cntMu.Unlock()
 					continue
 				}
 				tmpDir := sessDir + ".pre.tmp"
