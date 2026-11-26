@@ -129,11 +129,23 @@ public class MusicPlaybackService extends Service {
         if (items == null || items.isEmpty()) return;
         pendingQueue = new ArrayList<>(items);
         pendingIndex = Math.max(0, Math.min(startIndex, items.size() - 1));
-        startPendingIfNeeded(ctx);
+        if (instance != null) {
+            synchronized (instance.queue) {
+                instance.queue.clear();
+                instance.queue.addAll(pendingQueue);
+            }
+            instance.playAt(pendingIndex);
+            return;
+        }
+        dispatchPlayQueueIntent(ctx);
     }
 
     public static void startPendingIfNeeded(Context ctx) {
         if (instance != null && instance.getCurrentItem() != null) return;
+        dispatchPlayQueueIntent(ctx);
+    }
+
+    private static void dispatchPlayQueueIntent(Context ctx) {
         if (pendingQueue == null || pendingQueue.isEmpty()) return;
         Intent intent = new Intent(ctx, MusicPlaybackService.class);
         intent.setAction(ACTION_PLAY_QUEUE);
