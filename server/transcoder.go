@@ -56,6 +56,7 @@ type Transcoder struct {
 	ffmpegPath     string
 	ffprobePath    string
 	hasVAAPI       bool
+	hasVAAPIHEVC   bool
 	thumbDir       string
 	audioCacheDir  string
 	hlsRoot        string
@@ -63,6 +64,20 @@ type Transcoder struct {
 	sessions       map[string]*HLSSession
 	prewarmMu      sync.Mutex
 	prewarmRunning bool
+}
+
+func probeVAAPIEncoder(ffmpegPath, encoder string) bool {
+	if ffmpegPath == "" {
+		return false
+	}
+	cmd := exec.Command(ffmpegPath,
+		"-y", "-v", "quiet",
+		"-vaapi_device", "/dev/dri/renderD128",
+		"-f", "lavfi", "-i", "color=c=black:s=640x360:d=0.1",
+		"-vf", "format=nv12,hwupload",
+		"-c:v", encoder, "-f", "null", "-",
+	)
+	return cmd.Run() == nil
 }
 
 func NewTranscoder(dataDir string) *Transcoder {
@@ -78,7 +93,11 @@ func NewTranscoder(dataDir string) *Transcoder {
 	_ = os.MkdirAll(t.audioCacheDir, 0755)
 	_ = os.MkdirAll(t.hlsRoot, 0755)
 	if _, err := os.Stat("/dev/dri/renderD128"); err == nil {
-		t.hasVAAPI = true
+		t.hasVAAPI = probeVAAPIEncoder(t.ffmpegPath, "h264_vaapi")
+		if t.hasVAAPI {
+			t.hasVAAPIHEVC = probeVAAPIEncoder(t.ffmpegPath, "hevc_vaapi")
+		}
+		log.Printf("[Transcoder] VAAPI probe: h264_vaapi=%v, hevc_vaapi=%v", t.hasVAAPI, t.hasVAAPIHEVC)
 	}
 	go t.cleanupLoop()
 	return t
@@ -322,8 +341,12 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 	}
 	segPattern := filepath.Join(sessDir, "seg_%05d."+segExt)
 
+	effectiveCodec := codec
+	if t.hasVAAPI && cfg.EnableVAAPI && effectiveCodec == "hevc" && !t.hasVAAPIHEVC {
+		effectiveCodec = "h264"
+	}
 	targetBitrate := prof.Bitrate
-	if !prof.AudioOnly && codec == "hevc" && targetBitrate > 0 {
+	if !prof.AudioOnly && effectiveCodec == "hevc" && targetBitrate > 0 {
 		// HEVC 同画质下码率可降至 H.264 的 65%
 		targetBitrate = targetBitrate * 65 / 100
 	}
@@ -347,7 +370,7 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 			audKbps = "128k"
 		}
 		vEncoder := "h264_vaapi"
-		if codec == "hevc" {
+		if effectiveCodec == "hevc" {
 			vEncoder = "hevc_vaapi"
 		}
 		if useHWDecode {
@@ -370,7 +393,7 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 				"-c:v", vEncoder,
 			}
 		}
-		if codec == "hevc" {
+		if effectiveCodec == "hevc" {
 			args = append(args, "-tag:v", "hvc1")
 		}
 		args = append(args,
