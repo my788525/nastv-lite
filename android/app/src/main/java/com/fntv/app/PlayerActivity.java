@@ -991,7 +991,7 @@ public class PlayerActivity extends AppCompatActivity {
         CloudStreamManager.PlaybackConfig cfg = cloudStreamManager.getPlaybackConfig(baseUrl, mediaGuid);
         String playUrl = cfg.url;
         boolean isHlsStream = cfg.hls;
-        String defQ = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_default_quality", "original");
+        String defQ = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_default_quality", "auto");
         if (qualityRetry == 0 && defQ != null && !"original".equals(defQ)) {
             playUrl = "auto".equals(defQ)
                     ? (baseUrl + "/v/api/v1/hls/" + mediaGuid + "/auto/master.m3u8")
@@ -2634,7 +2634,7 @@ public class PlayerActivity extends AppCompatActivity {
         if (!getSharedPreferences("fntv_prefs", MODE_PRIVATE).getBoolean("pref_next_ep_prewarm", true)) return;
         final com.fntv.app.api.model.PlayListItem nextEp = episodeManager.getNextEpisodeItem();
         if (nextEp == null || nextEp.guid == null || nextEp.guid.isEmpty()) return;
-        String defQ = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_default_quality", "original");
+        String defQ = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_default_quality", "auto");
         if (defQ == null || "original".equals(defQ)) return;
         final String nextUrl = appendHlsParams("auto".equals(defQ)
                 ? (baseUrl + "/v/api/v1/hls/" + nextEp.guid + "/auto/master.m3u8")

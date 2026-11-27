@@ -3785,9 +3785,9 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         }
 
         // 9. 默认起播清晰度
-        final String[] qualityLabels = {"原画 (Direct Play)", "1080P 高清 (8M)", "720P 标清 (4M)", "480P 流畅 (1.5M)", "360P 极速省流 (800K)", "纯音频极速 (128K)"};
-        final String[] qualityKeys = {"original", "1080p", "720p", "480p", "360p", "audio"};
-        String curQ = prefs.getString("pref_default_quality", "original");
+        final String[] qualityLabels = {"⚡ 智能自适应 (ABR 720P~360P)", "原画 (Direct Play)", "1080P 高清 (8M)", "720P 标清 (4M)", "480P 流畅 (1.5M)", "360P 极速省流 (800K)", "纯音频极速 (128K)"};
+        final String[] qualityKeys = {"auto", "original", "1080p", "720p", "480p", "360p", "audio"};
+        String curQ = prefs.getString("pref_default_quality", "auto");
         int qIdx = 0;
         for (int i = 0; i < qualityKeys.length; i++) {
             if (qualityKeys[i].equals(curQ)) { qIdx = i; break; }
@@ -3795,7 +3795,7 @@ public class HomeActivity extends AppCompatActivity implements MusicPlaybackServ
         if (tvDefaultQualityValue != null) tvDefaultQualityValue.setText(qualityLabels[qIdx]);
         if (rlDefaultQualitySetting != null) {
             rlDefaultQualitySetting.setOnClickListener(v -> {
-                String savedQ = prefs.getString("pref_default_quality", "original");
+                String savedQ = prefs.getString("pref_default_quality", "auto");
                 int sel = 0;
                 for (int i = 0; i < qualityKeys.length; i++) {
                     if (qualityKeys[i].equals(savedQ)) { sel = i; break; }

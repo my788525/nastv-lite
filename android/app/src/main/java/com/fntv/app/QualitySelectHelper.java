@@ -71,7 +71,10 @@ public class QualitySelectHelper {
         if (options != null && selectedIndex >= 0 && selectedIndex < options.size()) {
             return options.get(selectedIndex).label;
         }
-        return "原画";
+        String defQ = prefs != null ? prefs.getString("pref_default_quality", "auto") : "auto";
+        if ("auto".equals(defQ)) return "智能自适应";
+        if ("original".equals(defQ)) return "原画";
+        return defQ.toUpperCase();
     }
 
     /** 加载画质列表并显示弹窗 */
