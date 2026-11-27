@@ -298,8 +298,13 @@ public class PlayerActivity extends AppCompatActivity {
                 introSkipped = false;
                 outroSkipped = false;
                 endingBannerShown = false;
-        nextEpPrewarmed = false;
-        pendingNetResume = false;
+                nextEpPrewarmed = false;
+                pendingNetResume = false;
+                qualityRetry = 0;
+                customQualityRes = "";
+                customQualityBitrate = 0;
+                customPlayLink = "";
+                if (qualityHelper != null) qualityHelper.resetToDefault();
                 itemGuid = guid;
                 itemTitle = title;
                 itemDuration = 0;
@@ -795,7 +800,8 @@ public class PlayerActivity extends AppCompatActivity {
                     return;
                 }
                 // 4) 解码/格式不支持 → 自动降级画质（fnOS 多档位直链，BYD 解码器多不支持 4K HEVC，降级到 H.264/低分辨率常可播）
-                if (cloudStreamManager.hasMultipleQualities()
+                String curDefQ = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_default_quality", "auto");
+                if ("original".equals(curDefQ) && cloudStreamManager.hasMultipleQualities()
                         && qualityRetry < cloudStreamManager.getQualityCount() - 1) {
                     qualityRetry++;
                     int qc = cloudStreamManager.getQualityCount();

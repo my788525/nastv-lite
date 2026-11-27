@@ -63,7 +63,12 @@ public class QualitySelectHelper {
         this.apiManager = apiManager;
         this.prefs = prefs;
         this.qCallback = qCallback;
-        this.selectedIndex = prefs.getInt("stream_quality_idx_" + qCallback.getMediaGuid(), 0);
+        this.selectedIndex = -1;
+    }
+
+    public void resetToDefault() {
+        this.options = null;
+        this.selectedIndex = -1;
     }
 
     /** 获取当前选项 label */
@@ -116,6 +121,18 @@ public class QualitySelectHelper {
                 }
                 streamData = response.body().data;
                 options = buildOptions(streamData.qualities);
+                if (selectedIndex < 0 || selectedIndex >= options.size()) {
+                    String defQ = prefs != null ? prefs.getString("pref_default_quality", "auto") : "auto";
+                    String targetRes = prefs != null ? prefs.getString("stream_quality_res_" + qCallback.getMediaGuid(), defQ) : defQ;
+                    String norm = targetRes != null ? targetRes.toLowerCase().replace("p", "") : "auto";
+                    selectedIndex = 0;
+                    for (int i = 0; i < options.size(); i++) {
+                        QualityOption o = options.get(i);
+                        if ("original".equals(norm) && o.isOriginal) { selectedIndex = i; break; }
+                        String oRes = o.resolution != null ? o.resolution.toLowerCase().replace("p", "") : "";
+                        if (!oRes.isEmpty() && oRes.equals(norm)) { selectedIndex = i; break; }
+                    }
+                }
                 showDialog();
             }
 
@@ -196,7 +213,8 @@ public class QualitySelectHelper {
                     if (which < 0 || which >= options.size() || which == selectedIndex) return;
                     selectedIndex = which;
                     QualityOption selected = options.get(which);
-                    prefs.edit().putInt("stream_quality_idx_" + qCallback.getMediaGuid(), selectedIndex).apply();
+                    String resKey = selected.isOriginal ? "original" : (selected.resolution != null ? selected.resolution : "auto");
+                    prefs.edit().putString("stream_quality_res_" + qCallback.getMediaGuid(), resKey).apply();
                     if (selected.isOriginal) {
                         qCallback.onQualityChanged(which);
                     } else {
