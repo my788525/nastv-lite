@@ -1,17 +1,17 @@
 {
   "server": {
-    "versionCode": 30,
-    "versionName": "1.5.23",
-    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.23/nastv-server-linux-amd64",
-    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.23/nastv-server-windows-amd64.exe",
-    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.23/nasfun-x86_64-v1.5.23.fpk",
-    "changelog": "NASFun 服务端 v1.5.23：\n1. 修复高并发下媒体列表与后台刮削的嵌套 RLock 死锁问题，彻底消除服务端假死。\n2. 启动自动探测 h264_vaapi / hevc_vaapi 支持情况，不支持 HEVC 硬编的主机（如 J1900）自动回退 h264_vaapi，并针对非硬解片源自动切 CPU 解码 + VAAPI 编码。\n3. 同规格 H.264 视频零转码直接封装（-c:v copy），低码率 H.264 MP4 在自适应下直接 Range 秒开。\n4. 8GB 大内存深度优化：实时视频 HLS 迁入 /dev/shm 纯内存盘、新增 512MB 海报封面内存缓存、Go GC 调优（GOGC=200）。\n5. 新增高频/短视频（<=10分钟）持久化 720p 预缓存，看视频时自动暂停后台预缓存让出算力。"
+    "versionCode": 31,
+    "versionName": "1.5.24",
+    "binaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.24/nastv-server-linux-amd64",
+    "winBinaryUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.24/nastv-server-windows-amd64.exe",
+    "fpkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.24/nasfun-x86_64-v1.5.24.fpk",
+    "changelog": "NASFun 服务端 v1.5.24：\n1. 同步版本号至 v1.5.24 (Build 31)，配合客户端全视频默认自适应画质优化。"
   },
   "android": {
-    "versionCode": 30,
-    "versionName": "1.5.23",
-    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.23/NASFun_v1.5.23.apk",
-    "changelog": "NASFun 客户端 v1.5.23：\n1. 设置页「默认起播清晰度」默认选中「⚡ 智能自适应 (ABR 720P~360P)」，所有视频优先按设置画质执行。",
+    "versionCode": 31,
+    "versionName": "1.5.24",
+    "apkUrl": "https://github.com/my788525/nastv-lite/releases/download/v1.5.24/NASFun_v1.5.24.apk",
+    "changelog": "NASFun 客户端 v1.5.24：\n1. 修复切集/切另一个视频时画质自动变成原画导致无法播放的问题，所有视频均默认按「⚡ 智能自适应 (ABR 720P~360P)」起播，除非手动选择其他清晰度。",
     "forceUpdate": false
   }
 }
