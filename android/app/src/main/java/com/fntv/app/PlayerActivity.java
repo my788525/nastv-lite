@@ -998,13 +998,17 @@ public class PlayerActivity extends AppCompatActivity {
         String playUrl = cfg.url;
         boolean isHlsStream = cfg.hls;
         String defQ = getSharedPreferences("fntv_prefs", MODE_PRIVATE).getString("pref_default_quality", "auto");
-        if (qualityRetry == 0 && defQ != null && !"original".equals(defQ)) {
+        boolean canDirectAuto = "auto".equals(defQ)
+                && "h264".equalsIgnoreCase(streamVCodec)
+                && streamBitrate > 0 && streamBitrate <= 3500000
+                && ("mp4".equalsIgnoreCase(streamContainer) || "mov".equalsIgnoreCase(streamContainer) || "m4v".equalsIgnoreCase(streamContainer));
+        if (qualityRetry == 0 && defQ != null && !"original".equals(defQ) && !canDirectAuto) {
             playUrl = "auto".equals(defQ)
                     ? (baseUrl + "/v/api/v1/hls/" + mediaGuid + "/auto/master.m3u8")
                     : (baseUrl + "/v/api/v1/hls/" + mediaGuid + "/" + defQ + "/index.m3u8");
             playUrl = appendHlsParams(playUrl);
             isHlsStream = true;
-        } else if (isHlsStream) {
+        } else if (isHlsStream && !canDirectAuto) {
             playUrl = appendHlsParams(playUrl);
         }
         OkHttpExoDataSource.setChunkedMode(cfg.chunkedModeSize);

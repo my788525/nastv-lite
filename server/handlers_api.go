@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
@@ -561,16 +562,15 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 		if len(qs) > 0 {
 			suffix = "?" + strings.Join(qs, "&")
 		}
-		bw720, bw480, bw360 := 1750000, 1020000, 580000
+		bw720 := 1750000
 		if codecQ == "hevc" && app.transcoder.hasVAAPIHEVC {
-			bw720, bw480, bw360 = 1150000, 680000, 400000
+			bw720 = 1150000
 		}
+		// 单流 720P HLS（避免弱网 ABR 频繁切换在 J1900 上同时拉起多个 ffmpeg 抢占算力导致卡顿）
 		master := fmt.Sprintf(
 			"#EXTM3U\n#EXT-X-VERSION:3\n"+
-				"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=1280x720,NAME=\"720P\"\n/v/api/v1/hls/%s/720p/index.m3u8%s\n"+
-				"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=854x480,NAME=\"480P\"\n/v/api/v1/hls/%s/480p/index.m3u8%s\n"+
-				"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=640x360,NAME=\"360P\"\n/v/api/v1/hls/%s/360p/index.m3u8%s\n",
-			bw720, guid, suffix, bw480, guid, suffix, bw360, guid, suffix)
+				"#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=1280x720,NAME=\"720P\"\n/v/api/v1/hls/%s/720p/index.m3u8%s\n",
+			bw720, guid, suffix)
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write([]byte(master))
@@ -587,12 +587,27 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := filepath.Join(sessDir, file)
+	if strings.HasSuffix(file, ".ts") || strings.HasSuffix(file, ".m4s") {
+		// 若客户端/预取器请求了 ffmpeg 正在写入的下一分片，最多等待 3 秒避免直接返回 404 触发卡顿重连
+		for i := 0; i < 30; i++ {
+			if st, err := os.Stat(target); err == nil && st.Size() > 0 {
+				break
+			}
+			if isCompletedHLS(filepath.Join(sessDir, "index.m3u8")) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
 	if strings.HasSuffix(file, ".m3u8") {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
 	} else if strings.HasSuffix(file, ".ts") {
 		w.Header().Set("Content-Type", "video/mp2t")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
 	} else if strings.HasSuffix(file, ".m4s") {
 		w.Header().Set("Content-Type", "video/iso.segment")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
 	} else if strings.HasSuffix(file, ".mp4") {
 		w.Header().Set("Content-Type", "video/mp4")
 	}
