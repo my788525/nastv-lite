@@ -230,7 +230,11 @@ func (app *App) handleItemList(w http.ResponseWriter, r *http.Request) {
 		_, _ = ScanLibrary(app.store, targetParent)
 	}
 
-	var list []PlayListItemDTO
+	type itemWithMode struct {
+		it   *MediaItem
+		mode string
+	}
+	var matched []itemWithMode
 	app.store.mu.RLock()
 	for _, it := range app.store.data.Items {
 		if !u.CanAccessLibrary(it.LibID) {
@@ -248,7 +252,8 @@ func (app *App) handleItemList(w http.ResponseWriter, r *http.Request) {
 			if it.LibID != targetParent || it.ViewMode != ModeFolder || it.Type != "Audio" {
 				continue
 			}
-			list = append(list, app.toItemDTO(u.ID, it, ModeMusic))
+			cp := *it
+			matched = append(matched, itemWithMode{it: &cp, mode: ModeMusic})
 			continue
 		}
 		if targetParent != "" && it.ParentGuid != targetParent {
@@ -257,9 +262,15 @@ func (app *App) handleItemList(w http.ResponseWriter, r *http.Request) {
 		if isLibRoot && it.ViewMode != itemMode {
 			continue
 		}
-		list = append(list, app.toItemDTO(u.ID, it, itemMode))
+		cp := *it
+		matched = append(matched, itemWithMode{it: &cp, mode: itemMode})
 	}
 	app.store.mu.RUnlock()
+
+	var list []PlayListItemDTO
+	for _, m := range matched {
+		list = append(list, app.toItemDTO(u.ID, m.it, m.mode))
+	}
 
 	sort.Slice(list, func(i, j int) bool {
 		iDir := list[i].Type == "Directory"
@@ -696,7 +707,11 @@ func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 		okResp(w, []PlayListItemDTO{})
 		return
 	}
-	var res []PlayListItemDTO
+	type searchHit struct {
+		it   *MediaItem
+		mode string
+	}
+	var hits []searchHit
 	app.store.mu.RLock()
 	for _, it := range app.store.data.Items {
 		if !u.CanAccessLibrary(it.LibID) {
@@ -714,13 +729,18 @@ func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if strings.Contains(strings.ToLower(it.Title), q) || strings.Contains(strings.ToLower(it.TvTitle), q) || strings.Contains(strings.ToLower(it.Artist), q) {
-			res = append(res, app.toItemDTO(u.ID, it, mode))
-			if len(res) >= 100 {
+			cp := *it
+			hits = append(hits, searchHit{it: &cp, mode: mode})
+			if len(hits) >= 100 {
 				break
 			}
 		}
 	}
 	app.store.mu.RUnlock()
+	var res []PlayListItemDTO
+	for _, h := range hits {
+		res = append(res, app.toItemDTO(u.ID, h.it, h.mode))
+	}
 	if res == nil {
 		res = []PlayListItemDTO{}
 	}
