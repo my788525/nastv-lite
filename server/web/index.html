@@ -93,6 +93,7 @@
     <div class="nav-item active" data-tab="dash" onclick="switchTab('dash')">📊 系统概览</div>
     <div class="nav-item" data-tab="libs" onclick="switchTab('libs')">📚 媒体库管理</div>
     <div class="nav-item" data-tab="musicdl" onclick="switchTab('musicdl')">🎵 搜歌下载</div>
+    <div class="nav-item" data-tab="files" onclick="switchTab('files')">📂 共享文件</div>
     <div class="nav-item" data-tab="users" onclick="switchTab('users')">👥 用户与权限</div>
     <div class="nav-item" data-tab="ddns" onclick="switchTab('ddns')">🌐 DDNS 动态域名</div>
     <div class="nav-item" data-tab="settings" onclick="switchTab('settings')">⚙️ 服务端设置</div>
@@ -361,6 +362,37 @@
         </table>
       </div>
     </section>
+
+    <!-- Tab 7: Shared Files -->
+    <section id="tab-files" class="tab-pane hidden">
+      <div class="page-header">
+        <div class="page-title">📂 共享文件管理</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="sec" onclick="loadSharedFiles(sfCurrentPath)">🔄 刷新</button>
+          <button class="sec" id="sfMkdirBtn" onclick="createSharedDir()">📁 新建文件夹</button>
+          <button id="sfUploadBtn" onclick="document.getElementById('sfUploadInput').click()">⬆ 上传文件</button>
+          <input type="file" id="sfUploadInput" multiple style="display:none" onchange="uploadSharedFiles(this.files)">
+        </div>
+      </div>
+
+      <div class="card" id="sfDropZone"
+           ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
+           ondragleave="this.style.borderColor=''"
+           ondrop="event.preventDefault();this.style.borderColor='';if(event.dataTransfer?.files?.length)uploadSharedFiles(event.dataTransfer.files)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="sec" id="sfUpBtn" onclick="loadSharedFiles(sfParentPath)">⬆ 返回上级</button>
+            <span id="sfPathLabel" style="font-size:13px;color:var(--accent)">共享根目录</span>
+          </div>
+          <span style="font-size:12px;color:var(--muted)">提示：在「媒体库管理」勾选「📂 文件共享」的目录及安装包目录可在此直接上传、重命名与删除（支持拖拽上传）</span>
+        </div>
+        <div id="sfUploadProgress" style="display:none;margin-bottom:12px;padding:8px 12px;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.25);border-radius:8px;font-size:13px"></div>
+        <table>
+          <thead><tr><th>名称</th><th>大小</th><th>修改时间</th><th>操作</th></tr></thead>
+          <tbody id="sfTbody"><tr><td colspan="4" style="color:var(--muted)">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -513,6 +545,7 @@ function switchTab(tab) {
   if (tab === 'settings') loadSettings();
   if (tab === 'ddns') loadDDNS();
   if (tab === 'musicdl') initMusicDlTab();
+  if (tab === 'files') loadSharedFiles(sfCurrentPath);
 }
 
 async function api(url, opts = {}) {
@@ -1212,6 +1245,153 @@ async function loadMusicTasks() {
   if (list.some(t => t.status === 'queued' || t.status === 'downloading' || t.status === 'enriching' || t.status === 'transcoding')) {
     setTimeout(loadMusicTasks, 2000);
   }
+}
+
+// ========== 共享文件管理 ==========
+let sfCurrentPath = '';
+let sfParentPath = '';
+let sfEntries = [];
+
+function fmtFileSize(bytes) {
+  bytes = Number(bytes) || 0;
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(2) + ' MB';
+  return (bytes / 1073741824).toFixed(2) + ' GB';
+}
+
+async function loadSharedFiles(path) {
+  sfCurrentPath = path || '';
+  const tb = document.getElementById('sfTbody');
+  const label = document.getElementById('sfPathLabel');
+  const upBtn = document.getElementById('sfUpBtn');
+  const mkdirBtn = document.getElementById('sfMkdirBtn');
+  const uploadBtn = document.getElementById('sfUploadBtn');
+  const isRoot = !sfCurrentPath;
+  if (label) label.textContent = isRoot ? '共享根目录（请选择一个共享目录进入管理）' : sfCurrentPath;
+  if (upBtn) upBtn.disabled = isRoot;
+  if (mkdirBtn) mkdirBtn.disabled = isRoot;
+  if (uploadBtn) uploadBtn.disabled = isRoot;
+  if (tb) tb.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">加载中...</td></tr>';
+  try {
+    const r = await api('/v/api/v1/files/list?path=' + encodeURIComponent(sfCurrentPath));
+    if (r.code !== 0) {
+      tb.innerHTML = '<tr><td colspan="4" style="color:var(--red)">' + esc(r.msg || '加载失败') + '</td></tr>';
+      return;
+    }
+    sfParentPath = r.data?.parent || '';
+    sfEntries = r.data?.entries || [];
+    if (!sfEntries.length) {
+      tb.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">当前目录为空</td></tr>';
+      return;
+    }
+    tb.innerHTML = sfEntries.map((e, idx) => {
+      const icon = e.is_dir ? '📁' : '📄';
+      const sizeTxt = e.is_dir ? '-' : fmtFileSize(e.size);
+      const timeTxt = e.mod_time ? new Date(e.mod_time * 1000).toLocaleString() : '--';
+      const nameCell = e.is_dir
+        ? `<a href="javascript:void(0)" onclick="loadSharedFiles(sfEntries[${idx}].path)" style="color:var(--accent);text-decoration:none;font-weight:600">${icon} ${esc(e.name)}</a>`
+        : `${icon} <span>${esc(e.name)}</span>`;
+      const ops = isRoot
+        ? `<button class="sec" onclick="loadSharedFiles(sfEntries[${idx}].path)">打开</button>`
+        : (e.is_dir
+            ? `<button class="sec" onclick="loadSharedFiles(sfEntries[${idx}].path)">打开</button>
+               <button class="sec" onclick="renameSharedEntry(${idx})">✏ 重命名</button>
+               <button class="danger" onclick="deleteSharedEntry(${idx})">🗑 删除</button>`
+            : `<button class="sec" onclick="downloadSharedFile(${idx})">⬇ 下载</button>
+               <button class="sec" onclick="renameSharedEntry(${idx})">✏ 重命名</button>
+               <button class="danger" onclick="deleteSharedEntry(${idx})">🗑 删除</button>`);
+      return `
+        <tr>
+          <td>${nameCell}</td>
+          <td style="color:var(--muted)">${sizeTxt}</td>
+          <td style="color:var(--muted);font-size:12px">${esc(timeTxt)}</td>
+          <td><div style="display:flex;gap:6px;white-space:nowrap">${ops}</div></td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    tb.innerHTML = '<tr><td colspan="4" style="color:var(--red)">加载失败: ' + esc(err.message || err) + '</td></tr>';
+  }
+}
+
+function downloadSharedFile(idx) {
+  const e = sfEntries[idx];
+  if (!e || e.is_dir) return;
+  window.open('/v/api/v1/files/download?path=' + encodeURIComponent(e.path) + '&token=' + encodeURIComponent(token || ''), '_blank');
+}
+
+async function createSharedDir() {
+  if (!sfCurrentPath) { alert('请先进入一个共享目录'); return; }
+  const name = prompt('请输入新建文件夹名称：');
+  if (!name || !name.trim()) return;
+  const r = await api('/api/admin/files/mkdir', { method: 'POST', body: { dir: sfCurrentPath, name: name.trim() } });
+  if (r.code !== 0) { alert(r.msg || '创建失败'); return; }
+  loadSharedFiles(sfCurrentPath);
+}
+
+async function renameSharedEntry(idx) {
+  const e = sfEntries[idx];
+  if (!e) return;
+  const newName = prompt('请输入新名称：', e.name);
+  if (!newName || !newName.trim() || newName.trim() === e.name) return;
+  const r = await api('/api/admin/files/rename', { method: 'POST', body: { path: e.path, new_name: newName.trim() } });
+  if (r.code !== 0) { alert(r.msg || '重命名失败'); return; }
+  loadSharedFiles(sfCurrentPath);
+}
+
+async function deleteSharedEntry(idx) {
+  const e = sfEntries[idx];
+  if (!e) return;
+  const tip = e.is_dir ? `确定永久删除文件夹「${e.name}」及其内部所有内容？` : `确定永久删除文件「${e.name}」？`;
+  if (!confirm(tip)) return;
+  const r = await api('/api/admin/files/delete', { method: 'POST', body: { path: e.path } });
+  if (r.code !== 0) { alert(r.msg || '删除失败'); return; }
+  loadSharedFiles(sfCurrentPath);
+}
+
+function uploadSharedFiles(files) {
+  if (!sfCurrentPath) { alert('请先进入一个具体的共享目录后再上传'); return; }
+  if (!files || !files.length) return;
+  const prog = document.getElementById('sfUploadProgress');
+  const input = document.getElementById('sfUploadInput');
+  const fd = new FormData();
+  for (let i = 0; i < files.length; i++) {
+    fd.append('file', files[i], files[i].name);
+  }
+  if (prog) {
+    prog.style.display = 'block';
+    prog.textContent = `正在上传 ${files.length} 个文件... 0%`;
+  }
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/admin/files/upload?dir=' + encodeURIComponent(sfCurrentPath));
+  if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+  xhr.upload.onprogress = ev => {
+    if (ev.lengthComputable && prog) {
+      const pct = Math.round((ev.loaded / ev.total) * 100);
+      prog.textContent = `正在上传 ${files.length} 个文件... ${pct}% (${fmtFileSize(ev.loaded)} / ${fmtFileSize(ev.total)})`;
+    }
+  };
+  xhr.onload = () => {
+    if (input) input.value = '';
+    try {
+      const r = JSON.parse(xhr.responseText || '{}');
+      if (xhr.status === 200 && r.code === 0) {
+        if (prog) prog.textContent = `✅ 上传完成：${(r.data?.uploaded || []).join('、')}`;
+        setTimeout(() => { if (prog) prog.style.display = 'none'; }, 3000);
+        loadSharedFiles(sfCurrentPath);
+      } else {
+        if (prog) prog.textContent = '❌ 上传失败：' + (r.msg || xhr.statusText);
+      }
+    } catch (err) {
+      if (prog) prog.textContent = '❌ 上传失败';
+    }
+  };
+  xhr.onerror = () => {
+    if (input) input.value = '';
+    if (prog) prog.textContent = '❌ 网络错误，上传中断';
+  };
+  xhr.send(fd);
 }
 
 if (token) initDashboard();

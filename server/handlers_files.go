@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -210,4 +212,198 @@ func (app *App) handleFilesDownload(w http.ResponseWriter, r *http.Request) {
 	fname := filepath.Base(reqPath)
 	w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(fname))
 	http.ServeContent(w, r, fname, st.ModTime(), f)
+}
+
+func isSafeSingleName(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	return !strings.ContainsAny(name, "/\\\x00")
+}
+
+func (app *App) isSharedRootPath(u *User, target string) bool {
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return true
+	}
+	norm := func(p string) string {
+		a, e := filepath.Abs(p)
+		if e != nil {
+			return p
+		}
+		if runtime.GOOS == "windows" {
+			return strings.ToLower(a)
+		}
+		return a
+	}
+	nt := norm(absTarget)
+	if nt == norm(filepath.Join(app.dataDir, "updates")) {
+		return true
+	}
+	for _, lib := range app.store.GetUserLibraries(u) {
+		if !lib.AllowDownload {
+			continue
+		}
+		for _, p := range lib.Paths {
+			if nt == norm(p) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (app *App) handleAdminFilesUpload(w http.ResponseWriter, r *http.Request) {
+	u := app.requireAdmin(w, r)
+	if u == nil {
+		return
+	}
+	if r.Method != http.MethodPost {
+		errResp(w, 405, "method not allowed")
+		return
+	}
+	dir := strings.TrimSpace(r.URL.Query().Get("dir"))
+	if dir == "" || !app.canAccessFSPath(u, dir) {
+		errResp(w, 403, "无权上传到该目录（请选择已开启文件共享的目录或安装包目录）")
+		return
+	}
+	mr, err := r.MultipartReader()
+	if err != nil {
+		errResp(w, 400, "解析上传请求失败: "+err.Error())
+		return
+	}
+	_ = os.MkdirAll(dir, 0755)
+	var uploaded []string
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			errResp(w, 400, "读取上传数据失败: "+err.Error())
+			return
+		}
+		fn := filepath.Base(strings.TrimSpace(part.FileName()))
+		if fn == "" || fn == "." || !isSafeSingleName(fn) {
+			_ = part.Close()
+			continue
+		}
+		dest := filepath.Join(dir, fn)
+		tmp := dest + ".upload.tmp"
+		f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if err != nil {
+			_ = part.Close()
+			errResp(w, 500, "创建文件失败: "+err.Error())
+			return
+		}
+		_, copyErr := io.Copy(f, part)
+		f.Close()
+		part.Close()
+		if copyErr != nil {
+			_ = os.Remove(tmp)
+			errResp(w, 500, "写入文件失败: "+copyErr.Error())
+			return
+		}
+		if err := os.Rename(tmp, dest); err != nil {
+			_ = os.Remove(tmp)
+			errResp(w, 500, "保存文件失败: "+err.Error())
+			return
+		}
+		uploaded = append(uploaded, fn)
+	}
+	if len(uploaded) == 0 {
+		errResp(w, 400, "未接收到有效文件")
+		return
+	}
+	okResp(w, map[string]interface{}{"uploaded": uploaded})
+}
+
+func (app *App) handleAdminFilesMkdir(w http.ResponseWriter, r *http.Request) {
+	u := app.requireAdmin(w, r)
+	if u == nil {
+		return
+	}
+	if r.Method != http.MethodPost {
+		errResp(w, 405, "method not allowed")
+		return
+	}
+	var req struct {
+		Dir  string `json:"dir"`
+		Name string `json:"name"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil {
+		errResp(w, 400, "请求参数错误")
+		return
+	}
+	req.Dir = strings.TrimSpace(req.Dir)
+	req.Name = strings.TrimSpace(req.Name)
+	if !app.canAccessFSPath(u, req.Dir) || !isSafeSingleName(req.Name) {
+		errResp(w, 400, "目录路径或文件夹名称不合法")
+		return
+	}
+	target := filepath.Join(req.Dir, req.Name)
+	if err := os.MkdirAll(target, 0755); err != nil {
+		errResp(w, 500, "创建文件夹失败: "+err.Error())
+		return
+	}
+	okResp(w, map[string]string{"path": target})
+}
+
+func (app *App) handleAdminFilesRename(w http.ResponseWriter, r *http.Request) {
+	u := app.requireAdmin(w, r)
+	if u == nil {
+		return
+	}
+	if r.Method != http.MethodPost {
+		errResp(w, 405, "method not allowed")
+		return
+	}
+	var req struct {
+		Path    string `json:"path"`
+		NewName string `json:"new_name"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil {
+		errResp(w, 400, "请求参数错误")
+		return
+	}
+	req.Path = strings.TrimSpace(req.Path)
+	req.NewName = strings.TrimSpace(req.NewName)
+	if req.Path == "" || !app.canAccessFSPath(u, req.Path) || app.isSharedRootPath(u, req.Path) || !isSafeSingleName(req.NewName) {
+		errResp(w, 400, "目标不可重命名或新名称不合法")
+		return
+	}
+	dest := filepath.Join(filepath.Dir(req.Path), req.NewName)
+	if err := os.Rename(req.Path, dest); err != nil {
+		errResp(w, 500, "重命名失败: "+err.Error())
+		return
+	}
+	okResp(w, map[string]string{"path": dest})
+}
+
+func (app *App) handleAdminFilesDelete(w http.ResponseWriter, r *http.Request) {
+	u := app.requireAdmin(w, r)
+	if u == nil {
+		return
+	}
+	if r.Method != http.MethodPost {
+		errResp(w, 405, "method not allowed")
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil {
+		errResp(w, 400, "请求参数错误")
+		return
+	}
+	req.Path = strings.TrimSpace(req.Path)
+	if req.Path == "" || !app.canAccessFSPath(u, req.Path) || app.isSharedRootPath(u, req.Path) {
+		errResp(w, 403, "不允许删除根目录或无权路径")
+		return
+	}
+	if err := os.RemoveAll(req.Path); err != nil {
+		errResp(w, 500, "删除失败: "+err.Error())
+		return
+	}
+	okResp(w, map[string]bool{"deleted": true})
 }
