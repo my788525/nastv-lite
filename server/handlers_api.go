@@ -581,6 +581,14 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, target)
 }
 
+var (
+	imgCacheMu    sync.RWMutex
+	imgCacheMap   = make(map[string][]byte)
+	imgCacheBytes int64
+)
+
+const maxImgCacheBytes = 512 * 1024 * 1024 // 512MB RAM cache for posters & album covers
+
 func (app *App) handleImg(w http.ResponseWriter, r *http.Request) {
 	guid := strings.TrimPrefix(r.URL.Path, "/v/api/v1/img/")
 	it, ok := app.store.GetItem(guid)
@@ -605,6 +613,29 @@ func (app *App) handleImg(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
+	imgCacheMu.RLock()
+	cached, hit := imgCacheMap[p]
+	imgCacheMu.RUnlock()
+	if hit && len(cached) > 0 {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Length", strconv.Itoa(len(cached)))
+		_, _ = w.Write(cached)
+		return
+	}
+	if data, err := os.ReadFile(p); err == nil && len(data) > 0 && len(data) <= 2*1024*1024 {
+		imgCacheMu.Lock()
+		if imgCacheBytes+int64(len(data)) > maxImgCacheBytes {
+			imgCacheMap = make(map[string][]byte)
+			imgCacheBytes = 0
+		}
+		imgCacheMap[p] = data
+		imgCacheBytes += int64(len(data))
+		imgCacheMu.Unlock()
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		_, _ = w.Write(data)
+		return
+	}
 	http.ServeFile(w, r, p)
 }
 

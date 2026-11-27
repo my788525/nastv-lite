@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -113,6 +114,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to init store: %v", err)
 	}
+	// 针对大内存 NAS（8GB+）：放宽 GC 触发阈值并设定 2GB 软上限，大幅降低 J1900 CPU 的 GC 频率
+	debug.SetGCPercent(200)
+	debug.SetMemoryLimit(2 * 1024 * 1024 * 1024)
 	transcoder := NewTranscoder(*dataDir)
 
 	app := &App{

@@ -81,13 +81,30 @@ func probeVAAPIEncoder(ffmpegPath, encoder string) bool {
 	return cmd.Run() == nil
 }
 
+func chooseHLSRoot() string {
+	if runtime.GOOS == "linux" {
+		shm := "/dev/shm"
+		if st, err := os.Stat(shm); err == nil && st.IsDir() {
+			p := filepath.Join(shm, "nastv_hls")
+			if err := os.MkdirAll(p, 0755); err == nil {
+				// 清理上次遗留的临时转码目录，释放内存盘空间
+				_ = os.RemoveAll(p)
+				_ = os.MkdirAll(p, 0755)
+				log.Printf("[Transcoder] 使用内存盘 (tmpfs) 存放实时视频 HLS 切片: %s", p)
+				return p
+			}
+		}
+	}
+	return filepath.Join(os.TempDir(), "nastv_hls")
+}
+
 func NewTranscoder(dataDir string) *Transcoder {
 	t := &Transcoder{
 		ffmpegPath:    findBinary("ffmpeg", []string{"/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/trim/bin/ffmpeg"}),
 		ffprobePath:   findBinary("ffprobe", []string{"/usr/bin/ffprobe", "/usr/local/bin/ffprobe", "/usr/trim/bin/ffprobe"}),
 		thumbDir:      filepath.Join(dataDir, "thumbs"),
 		audioCacheDir: filepath.Join(dataDir, "audio_hls_cache"),
-		hlsRoot:       filepath.Join(os.TempDir(), "nastv_hls"),
+		hlsRoot:       chooseHLSRoot(),
 		sessions:      make(map[string]*HLSSession),
 	}
 	_ = os.MkdirAll(t.thumbDir, 0755)
