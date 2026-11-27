@@ -62,6 +62,7 @@ type Transcoder struct {
 	hlsRoot        string
 	mu             sync.Mutex
 	sessions       map[string]*HLSSession
+	lastVideoAt    time.Time
 	prewarmMu      sync.Mutex
 	prewarmRunning bool
 }
@@ -318,6 +319,9 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 	}
 
 	t.mu.Lock()
+	if !prof.AudioOnly {
+		t.lastVideoAt = time.Now()
+	}
 	if sess, ok := t.sessions[sessKey]; ok {
 		sess.LastAccess = time.Now()
 		dir := sess.Dir
@@ -350,6 +354,24 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 		// HEVC 同画质下码率可降至 H.264 的 65%
 		targetBitrate = targetBitrate * 65 / 100
 	}
+	targetH := prof.Height
+	if item.Height > 0 && item.Height < targetH {
+		targetH = item.Height - (item.Height % 2)
+		if targetH < 240 {
+			targetH = 240
+		}
+	}
+
+	// 零转码直封（Remux）：源视频本身已是 H.264 且分辨率和码率均不超过目标档位时，直接 -c:v copy 切片
+	canCopyVideo := !prof.AudioOnly && effectiveCodec == "h264" &&
+		strings.EqualFold(item.VCodec, "h264") &&
+		item.Height > 0 && item.Height <= prof.Height &&
+		item.Bitrate > 0 && item.Bitrate <= prof.Bitrate*125/100
+
+	// 仅对 VAAPI 硬件支持解码的编码器开启全链路硬解（如 J1900 不支持 HEVC/VP9 硬解，自动回退 CPU 解码 + VAAPI 硬编）
+	vcLower := strings.ToLower(strings.TrimSpace(item.VCodec))
+	hwDecodable := vcLower == "" || vcLower == "h264" || vcLower == "mpeg2video" || vcLower == "vc1" || vcLower == "wmv3" || vcLower == "mjpeg" || (vcLower == "hevc" && t.hasVAAPIHEVC)
+	effectiveHWDecode := useHWDecode && hwDecodable
 
 	var args []string
 	if prof.AudioOnly {
@@ -364,6 +386,28 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 			"-hls_playlist_type", "event", "-hls_flags", "independent_segments",
 			"-hls_segment_filename", filepath.Join(sessDir, "seg_%05d.ts"), m3u8Path,
 		}
+	} else if canCopyVideo {
+		audKbps := "96k"
+		if prof.Height >= 1080 {
+			audKbps = "128k"
+		}
+		args = []string{
+			"-y", "-i", item.FilePath,
+			"-c:v", "copy",
+		}
+		if strings.EqualFold(item.ACodec, "aac") {
+			args = append(args, "-c:a", "copy")
+		} else {
+			args = append(args, "-c:a", "aac", "-b:a", audKbps, "-ac", "2")
+		}
+		args = append(args,
+			"-f", "hls", "-hls_time", strconv.Itoa(segSec), "-hls_list_size", "0",
+			"-hls_playlist_type", "event", "-hls_flags", "independent_segments",
+		)
+		if container == "fmp4" {
+			args = append(args, "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4")
+		}
+		args = append(args, "-hls_segment_filename", segPattern, m3u8Path)
 	} else if t.hasVAAPI && cfg.EnableVAAPI {
 		audKbps := "96k"
 		if prof.Height >= 1080 {
@@ -373,9 +417,9 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 		if effectiveCodec == "hevc" {
 			vEncoder = "hevc_vaapi"
 		}
-		if useHWDecode {
+		if effectiveHWDecode {
 			// 全链路 VAAPI 硬件解码 + 硬件缩放 + 硬件编码（零拷贝，速度 5x-15x）
-			scaleFilter := fmt.Sprintf("scale_vaapi=w=-2:h=%d:format=nv12", prof.Height)
+			scaleFilter := fmt.Sprintf("scale_vaapi=w=-2:h=%d:format=nv12", targetH)
 			args = []string{
 				"-y", "-hwaccel", "vaapi",
 				"-hwaccel_device", "/dev/dri/renderD128",
@@ -385,7 +429,7 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 				"-c:v", vEncoder,
 			}
 		} else {
-			scaleFilter := fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", prof.Height)
+			scaleFilter := fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", targetH)
 			args = []string{
 				"-y", "-vaapi_device", "/dev/dri/renderD128",
 				"-i", item.FilePath,
@@ -414,7 +458,7 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 		if prof.Height >= 1080 {
 			audKbps = "128k"
 		}
-		scaleFilter := fmt.Sprintf("scale=-2:%d", prof.Height)
+		scaleFilter := fmt.Sprintf("scale=-2:%d", targetH)
 		args = []string{
 			"-y", "-threads", "0", "-i", item.FilePath,
 			"-vf", scaleFilter,
@@ -451,20 +495,31 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 		LastAccess:   time.Now(),
 		AudioPersist: audioPersist,
 	}
+	doneCh := make(chan error, 1)
 	go func() {
-		if err := cmd.Wait(); err != nil {
+		err := cmd.Wait()
+		if err != nil {
 			log.Printf("[HLS] %s ended: %v", sessKey, err)
 		}
+		doneCh <- err
 	}()
 	t.mu.Unlock()
 
-	// Wait up to 8 seconds for index.m3u8 and first segment seg_00000.ts to be written
-	firstSeg := filepath.Join(sessDir, "seg_00000.ts")
+	// Wait up to 8 seconds for index.m3u8 and first segment seg_00000.ts to be written (or break early on exit)
+	firstSeg := filepath.Join(sessDir, "seg_00000."+segExt)
 	for i := 0; i < 40; i++ {
 		stM, errM := os.Stat(m3u8Path)
 		stS, errS := os.Stat(firstSeg)
 		if errM == nil && stM.Size() > 20 && errS == nil && stS.Size() > 0 {
 			break
+		}
+		select {
+		case err := <-doneCh:
+			if err != nil {
+				return "", fmt.Errorf("ffmpeg 退出: %v", err)
+			}
+			return sessDir, nil
+		default:
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -606,6 +661,16 @@ func (t *Transcoder) PrewarmAllAudioCache(s *Store, qualityKey string) {
 			for it := range jobs {
 				if s.GetSettings().DisableAudioPrewarm {
 					return
+				}
+				// 视频正在转码/播放时主动让出 J1900 CPU 与磁盘 I/O
+				for {
+					t.mu.Lock()
+					busyVideo := !t.lastVideoAt.IsZero() && time.Since(t.lastVideoAt) < 45*time.Second
+					t.mu.Unlock()
+					if !busyVideo || s.GetSettings().DisableAudioPrewarm {
+						break
+					}
+					time.Sleep(3 * time.Second)
 				}
 				// 顺带补齐歌词、专辑封面、歌手/专辑/时长元数据
 				if it.Lyrics == "" || it.PosterPath == "" || it.Artist == "" {
