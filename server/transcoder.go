@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -60,6 +61,7 @@ type Transcoder struct {
 	hasVAAPIHEVC   bool
 	thumbDir       string
 	audioCacheDir  string
+	videoCacheDir  string
 	hlsRoot        string
 	mu             sync.Mutex
 	sessions       map[string]*HLSSession
@@ -105,11 +107,13 @@ func NewTranscoder(dataDir string) *Transcoder {
 		ffprobePath:   findBinary("ffprobe", []string{"/usr/bin/ffprobe", "/usr/local/bin/ffprobe", "/usr/trim/bin/ffprobe"}),
 		thumbDir:      filepath.Join(dataDir, "thumbs"),
 		audioCacheDir: filepath.Join(dataDir, "audio_hls_cache"),
+		videoCacheDir: filepath.Join(dataDir, "video_hls_cache"),
 		hlsRoot:       chooseHLSRoot(),
 		sessions:      make(map[string]*HLSSession),
 	}
 	_ = os.MkdirAll(t.thumbDir, 0755)
 	_ = os.MkdirAll(t.audioCacheDir, 0755)
+	_ = os.MkdirAll(t.videoCacheDir, 0755)
 	_ = os.MkdirAll(t.hlsRoot, 0755)
 	if _, err := os.Stat("/dev/dri/renderD128"); err == nil {
 		t.hasVAAPI = probeVAAPIEncoder(t.ffmpegPath, "h264_vaapi")
@@ -333,6 +337,11 @@ func (t *Transcoder) EnsureHLS(item *MediaItem, qualityKey string, cfg ServerSet
 		persistDir := filepath.Join(t.audioCacheDir, sessKey)
 		if isCompletedHLS(filepath.Join(persistDir, "index.m3u8")) {
 			return persistDir, nil
+		}
+	} else if !prof.AudioOnly && qualityKey == "720p" && container == "ts" && (codec == "h264" || (t.hasVAAPI && cfg.EnableVAAPI && !t.hasVAAPIHEVC)) {
+		persistVideoDir := filepath.Join(t.videoCacheDir, item.Guid+"_720p_h264_ts_4s")
+		if isCompletedHLS(filepath.Join(persistVideoDir, "index.m3u8")) {
+			return persistVideoDir, nil
 		}
 	}
 
@@ -777,4 +786,220 @@ func (t *Transcoder) GetAudioCacheStats(s *Store, qualityKey string) (totalAudio
 		return nil
 	})
 	return
+}
+
+func calcDirBytes(dir string) int64 {
+	var total int64
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if info, e := d.Info(); e == nil {
+				total += info.Size()
+			}
+		}
+		return nil
+	})
+	return total
+}
+
+// PrewarmHotVideos pre-transcodes high-frequency (recently watched) and short videos (<=10 min, e.g. MVs)
+// into persistent 720p H.264 HLS cache on disk (capped at 60 items / 10GB), pausing during live video playback.
+func (t *Transcoder) PrewarmHotVideos(s *Store) {
+	if t.ffmpegPath == "" || t.videoCacheDir == "" {
+		return
+	}
+	cfg := s.GetSettings()
+	if cfg.DisableAudioPrewarm {
+		return
+	}
+	const maxVideoItems = 60
+	const maxVideoCacheBytes int64 = 10 * 1024 * 1024 * 1024 // 10GB cap
+	if calcDirBytes(t.videoCacheDir) >= maxVideoCacheBytes {
+		return
+	}
+
+	type recPair struct {
+		guid      string
+		updatedAt int64
+	}
+	var recs []recPair
+	var shortVideos []*MediaItem
+	seen := make(map[string]bool)
+
+	s.mu.RLock()
+	for _, r := range s.data.Records {
+		recs = append(recs, recPair{guid: r.ItemGuid, updatedAt: r.UpdatedAt})
+	}
+	sort.Slice(recs, func(i, j int) bool { return recs[i].updatedAt > recs[j].updatedAt })
+
+	var candidates []*MediaItem
+	for _, rc := range recs {
+		if seen[rc.guid] {
+			continue
+		}
+		if it, ok := s.data.Items[rc.guid]; ok && it != nil && it.FilePath != "" && it.Type != "Audio" && it.Type != "Directory" {
+			cp := *it
+			candidates = append(candidates, &cp)
+			seen[rc.guid] = true
+			if len(candidates) >= maxVideoItems {
+				break
+			}
+		}
+	}
+	if len(candidates) < maxVideoItems {
+		for _, it := range s.data.Items {
+			if it == nil || seen[it.Guid] || it.FilePath == "" || it.Type == "Audio" || it.Type == "Directory" {
+				continue
+			}
+			if it.Duration > 0 && it.Duration <= 600 {
+				cp := *it
+				shortVideos = append(shortVideos, &cp)
+			}
+		}
+		sort.Slice(shortVideos, func(i, j int) bool { return shortVideos[i].Duration < shortVideos[j].Duration })
+		for _, it := range shortVideos {
+			candidates = append(candidates, it)
+			seen[it.Guid] = true
+			if len(candidates) >= maxVideoItems {
+				break
+			}
+		}
+	}
+	s.mu.RUnlock()
+
+	if len(candidates) == 0 {
+		return
+	}
+	prof := FindQualityProfile("720p")
+	if prof == nil {
+		return
+	}
+
+	var cachedCount int
+	var pending []*MediaItem
+	for _, it := range candidates {
+		sessDir := filepath.Join(t.videoCacheDir, it.Guid+"_720p_h264_ts_4s")
+		if isCompletedHLS(filepath.Join(sessDir, "index.m3u8")) {
+			cachedCount++
+		} else {
+			pending = append(pending, it)
+		}
+	}
+	if len(pending) == 0 {
+		return
+	}
+	log.Printf("[VideoPrewarm] 已有高频/短视频缓存 %d/%d 个，待预缓存 %d 个 (720p)", cachedCount, len(candidates), len(pending))
+
+	newCount := 0
+	for _, it := range pending {
+		if s.GetSettings().DisableAudioPrewarm {
+			return
+		}
+		if calcDirBytes(t.videoCacheDir) >= maxVideoCacheBytes {
+			log.Printf("[VideoPrewarm] 已达到 10GB 缓存上限，停止本轮预缓存")
+			break
+		}
+		for {
+			t.mu.Lock()
+			busyVideo := !t.lastVideoAt.IsZero() && time.Since(t.lastVideoAt) < 45*time.Second
+			t.mu.Unlock()
+			if !busyVideo || s.GetSettings().DisableAudioPrewarm {
+				break
+			}
+			time.Sleep(3 * time.Second)
+		}
+		if _, err := os.Stat(it.FilePath); err != nil {
+			continue
+		}
+
+		sessDir := filepath.Join(t.videoCacheDir, it.Guid+"_720p_h264_ts_4s")
+		tmpDir := sessDir + ".pre.tmp"
+		_ = os.RemoveAll(tmpDir)
+		if err := os.MkdirAll(tmpDir, 0755); err != nil {
+			continue
+		}
+		tmpM3u8 := filepath.Join(tmpDir, "index.m3u8")
+		segPattern := filepath.Join(tmpDir, "seg_%05d.ts")
+
+		targetH := prof.Height
+		if it.Height > 0 && it.Height < targetH {
+			targetH = it.Height - (it.Height % 2)
+			if targetH < 240 {
+				targetH = 240
+			}
+		}
+		canCopyVideo := strings.EqualFold(it.VCodec, "h264") &&
+			it.Height > 0 && it.Height <= prof.Height &&
+			it.Bitrate > 0 && it.Bitrate <= prof.Bitrate*125/100
+		vcLower := strings.ToLower(strings.TrimSpace(it.VCodec))
+		hwDecodable := vcLower == "" || vcLower == "h264" || vcLower == "mpeg2video" || vcLower == "vc1" || vcLower == "wmv3" || vcLower == "mjpeg"
+
+		var args []string
+		if canCopyVideo {
+			args = []string{"-y", "-v", "quiet", "-i", it.FilePath, "-c:v", "copy"}
+			if strings.EqualFold(it.ACodec, "aac") {
+				args = append(args, "-c:a", "copy")
+			} else {
+				args = append(args, "-c:a", "aac", "-b:a", "96k", "-ac", "2")
+			}
+		} else if t.hasVAAPI && cfg.EnableVAAPI {
+			if hwDecodable && !cfg.DisableHWDecode {
+				args = []string{
+					"-y", "-v", "quiet", "-hwaccel", "vaapi",
+					"-hwaccel_device", "/dev/dri/renderD128",
+					"-hwaccel_output_format", "vaapi",
+					"-i", it.FilePath,
+					"-vf", fmt.Sprintf("scale_vaapi=w=-2:h=%d:format=nv12", targetH),
+					"-c:v", "h264_vaapi",
+				}
+			} else {
+				args = []string{
+					"-y", "-v", "quiet", "-vaapi_device", "/dev/dri/renderD128",
+					"-i", it.FilePath,
+					"-vf", fmt.Sprintf("format=nv12,hwupload,scale_vaapi=w=-2:h=%d", targetH),
+					"-c:v", "h264_vaapi",
+				}
+			}
+			args = append(args,
+				"-b:v", fmt.Sprintf("%d", prof.Bitrate),
+				"-maxrate", fmt.Sprintf("%d", prof.Bitrate*115/100),
+				"-bufsize", fmt.Sprintf("%d", prof.Bitrate*2),
+				"-g", "96", "-keyint_min", "96", "-sc_threshold", "0",
+				"-c:a", "aac", "-b:a", "96k", "-ac", "2",
+			)
+		} else {
+			args = []string{
+				"-y", "-v", "quiet", "-threads", "2", "-i", it.FilePath,
+				"-vf", fmt.Sprintf("scale=-2:%d", targetH),
+				"-c:v", "libx264", "-preset", "veryfast",
+				"-b:v", fmt.Sprintf("%d", prof.Bitrate),
+				"-maxrate", fmt.Sprintf("%d", prof.Bitrate*115/100),
+				"-bufsize", fmt.Sprintf("%d", prof.Bitrate*2),
+				"-g", "96", "-keyint_min", "96", "-sc_threshold", "0",
+				"-c:a", "aac", "-b:a", "96k", "-ac", "2",
+			}
+		}
+		args = append(args,
+			"-f", "hls", "-hls_time", "4", "-hls_list_size", "0",
+			"-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
+			"-hls_segment_filename", segPattern, tmpM3u8,
+		)
+
+		cmd := exec.Command(t.ffmpegPath, args...)
+		if err := cmd.Run(); err == nil && isCompletedHLS(tmpM3u8) {
+			_ = os.RemoveAll(sessDir)
+			if os.Rename(tmpDir, sessDir) == nil {
+				newCount++
+				cachedCount++
+				log.Printf("[VideoPrewarm] 已预缓存 %d/%d 个 (720p): %s", cachedCount, len(candidates), it.Title)
+			} else {
+				_ = os.RemoveAll(tmpDir)
+			}
+		} else {
+			_ = os.RemoveAll(tmpDir)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if newCount > 0 {
+		log.Printf("[VideoPrewarm] 本轮高频/短视频预缓存完成：新增 %d 个，总计 %d/%d 个", newCount, cachedCount, len(candidates))
+	}
 }

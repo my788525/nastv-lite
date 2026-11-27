@@ -244,6 +244,7 @@ func main() {
 	go func() {
 		time.Sleep(15 * time.Second)
 		app.transcoder.PrewarmAllAudioCache(app.store, "")
+		app.transcoder.PrewarmHotVideos(app.store)
 	}()
 
 	if err := http.Serve(ln, corsMiddleware(app.gzipMiddleware(mux))); err != nil {
