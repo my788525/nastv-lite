@@ -430,6 +430,20 @@ func (app *App) handleStream(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func isDirectAutoPlayable(it *MediaItem) bool {
+	if it == nil || !strings.EqualFold(it.VCodec, "h264") {
+		return false
+	}
+	if it.Bitrate <= 0 || it.Bitrate > 3200000 {
+		return false
+	}
+	if it.ACodec != "" && !strings.EqualFold(it.ACodec, "aac") && !strings.EqualFold(it.ACodec, "mp3") {
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(it.FilePath))
+	return ext == ".mp4" || ext == ".m4v" || ext == ".mov"
+}
+
 func (app *App) handlePlayLink(w http.ResponseWriter, r *http.Request) {
 	u := app.requireUser(w, r)
 	if u == nil {
@@ -456,7 +470,10 @@ func (app *App) handlePlayLink(w http.ResponseWriter, r *http.Request) {
 		resKey += "p"
 	}
 	url := "/v/api/v1/media/range/" + it.Guid
-	if resKey == "auto" {
+	if (resKey == "auto" || (resKey == "720p" && it.Height > 0 && it.Height <= 720)) && isDirectAutoPlayable(it) {
+		// 低码率 H.264 MP4 直接走 Range 原画直链（零转码毫秒起播）
+		url = "/v/api/v1/media/range/" + it.Guid
+	} else if resKey == "auto" {
 		url = fmt.Sprintf("/v/api/v1/hls/%s/auto/master.m3u8", it.Guid)
 	} else if resKey != "" && resKey != "original" && FindQualityProfile(resKey) != nil {
 		url = fmt.Sprintf("/v/api/v1/hls/%s/%s/index.m3u8", it.Guid, resKey)
@@ -545,7 +562,7 @@ func (app *App) handleHLS(w http.ResponseWriter, r *http.Request) {
 			suffix = "?" + strings.Join(qs, "&")
 		}
 		bw720, bw480, bw360 := 1750000, 1020000, 580000
-		if codecQ == "hevc" {
+		if codecQ == "hevc" && app.transcoder.hasVAAPIHEVC {
 			bw720, bw480, bw360 = 1150000, 680000, 400000
 		}
 		master := fmt.Sprintf(

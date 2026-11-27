@@ -49,7 +49,7 @@ func NewStore(dataDir string) (*Store, error) {
 			ServerName:       "NASFun",
 			EnableVAAPI:      true,
 			TranscodePreset:  "veryfast",
-			HLSSegmentSec:    4,
+			HLSSegmentSec:    2,
 			AutoScanHours:    6,
 			EnableThumbnails: true,
 			EnableScraper:    true,
@@ -315,7 +315,7 @@ func (s *Store) UpdateSettings(cfg ServerSettings) error {
 		cfg.TranscodePreset = "veryfast"
 	}
 	if cfg.HLSSegmentSec <= 0 {
-		cfg.HLSSegmentSec = 4
+		cfg.HLSSegmentSec = 2
 	}
 	s.data.Settings = cfg
 	return s.saveLocked()
